@@ -15,7 +15,7 @@ use crate::cards::CardDb;
 use crate::localization::LocDb;
 use crate::parser::{Direction, ParsedEvent};
 
-mod handlers;
+pub mod handlers;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LiveCard {
@@ -121,12 +121,21 @@ impl AppState {
             // Collection / wallet — both naming styles.
             k if k.starts_with("Inventory") || k.starts_with("PlayerInventory") || k.starts_with("Wallet") => {
                 handlers::collection::handle(self, &event).await?;
+                handlers::inventory_changes::handle(self, &event).await?;
                 let _ = self.updates.send(LiveUpdate::CollectionUpdated);
             }
             // StartHook is MTGA's launch-time state dump: wallet + user decks.
             "StartHook" => {
                 handlers::starthook::handle(self, &event).await?;
                 let _ = self.updates.send(LiveUpdate::DecksUpdated);
+                let _ = self.updates.send(LiveUpdate::CollectionUpdated);
+            }
+            // Booster opens, prize grants, anything that hands out cards.
+            k if k.contains("Booster") || k.contains("OpenBooster") || k.contains("Prize")
+                || k.contains("Reward") || k.contains("Grant") || k.contains("PackOpen")
+                || k.contains("MassOpen") =>
+            {
+                handlers::inventory_changes::handle(self, &event).await?;
                 let _ = self.updates.send(LiveUpdate::CollectionUpdated);
             }
             "MatchGameRoomStateChangedEvent" => {

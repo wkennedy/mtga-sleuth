@@ -67,11 +67,28 @@
 
     <h2 style="margin-top:24px">Per-card collection</h2>
     <p class="muted">
-      MTGA's detailed log no longer emits per-card collection counts (last seen
-      working in older client versions). What you see here is computed from the
-      union of cards across <em>your saved decks</em> — so it's a lower bound,
-      not the full collection.
+      MTGA no longer dumps a full collection in its log. What's shown is built
+      incrementally from booster opens, draft picks, and reward grants the
+      tracker has observed since you started running it — plus any baseline
+      you import below.
     </p>
+
+    <details class="import-panel">
+      <summary>Import a baseline from text…</summary>
+      <p class="muted">
+        Paste an Arena-format export (one line per card: <code>4 Lightning Bolt (M21) 162</code>),
+        or raw <code>arena_id,quantity</code> rows. Section headers like <code>Deck</code>,
+        <code>Sideboard</code>, blank lines, and <code>// comments</code> are ignored.
+      </p>
+      <textarea id="import-text" rows="8" placeholder="4 Lightning Bolt (M21) 162&#10;1 Plains (NEO) 287&#10;..."></textarea>
+      <label class="import-replace">
+        <input type="checkbox" id="import-replace">
+        Replace current collection (otherwise add to it)
+      </label>
+      <button id="import-btn" class="primary">Import</button>
+      <div id="import-result" class="muted"></div>
+    </details>
+
     <input id="coll-filter" placeholder="Filter by name…" type="search">
     <div id="collection-grid" class="grid"></div>
   </section>

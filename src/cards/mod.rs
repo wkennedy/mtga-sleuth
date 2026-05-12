@@ -33,15 +33,24 @@ pub struct Card {
 
 pub struct CardDb {
     by_arena_id: HashMap<u32, Card>,
+    /// (lowercase set code, collector number) → arena_id. Used by paste-import
+    /// to resolve "4 Lightning Bolt (M21) 162" lines back to grpIds.
+    by_set_num: HashMap<(String, String), u32>,
 }
 
 impl CardDb {
     pub fn empty() -> Self {
-        Self { by_arena_id: HashMap::new() }
+        Self { by_arena_id: HashMap::new(), by_set_num: HashMap::new() }
     }
 
     pub fn get(&self, arena_id: u32) -> Option<&Card> {
         self.by_arena_id.get(&arena_id)
+    }
+
+    /// Resolve a card by (set code, collector number) — used by paste-import.
+    /// Set code matching is case-insensitive.
+    pub fn lookup_set_num(&self, set: &str, num: &str) -> Option<u32> {
+        self.by_set_num.get(&(set.to_lowercase(), num.to_string())).copied()
     }
 
     pub async fn load_or_fetch(cache_path: &Path, skip_fetch: bool) -> Result<Self> {
@@ -77,12 +86,20 @@ fn is_stale(path: &Path) -> Result<bool> {
 async fn load_from_cache(path: &Path) -> Result<CardDb> {
     let bytes = tokio::fs::read(path).await.with_context(|| format!("reading {}", path.display()))?;
     let cards: Vec<Card> = serde_json::from_slice(&bytes).context("decoding cached card db")?;
+    Ok(build_db(cards))
+}
+
+fn build_db(cards: Vec<Card>) -> CardDb {
     let mut by_arena_id = HashMap::with_capacity(cards.len());
+    let mut by_set_num = HashMap::with_capacity(cards.len());
     for c in cards {
+        if let (Some(set), Some(num)) = (c.set.as_ref(), c.collector_number.as_ref()) {
+            by_set_num.insert((set.to_lowercase(), num.clone()), c.arena_id);
+        }
         by_arena_id.insert(c.arena_id, c);
     }
-    tracing::info!(count = by_arena_id.len(), "card db loaded from cache");
-    Ok(CardDb { by_arena_id })
+    tracing::info!(count = by_arena_id.len(), set_num_index = by_set_num.len(), "card db built");
+    CardDb { by_arena_id, by_set_num }
 }
 
 async fn fetch_and_cache(cache_path: &Path) -> Result<CardDb> {
@@ -134,12 +151,7 @@ async fn fetch_and_cache(cache_path: &Path) -> Result<CardDb> {
     }
     let bytes = serde_json::to_vec(&filtered)?;
     tokio::fs::write(cache_path, &bytes).await?;
-
-    let mut by_arena_id = HashMap::with_capacity(filtered.len());
-    for c in filtered {
-        by_arena_id.insert(c.arena_id, c);
-    }
-    Ok(CardDb { by_arena_id })
+    Ok(build_db(filtered))
 }
 
 #[derive(Deserialize)]

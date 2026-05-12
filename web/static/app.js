@@ -202,6 +202,33 @@ async function deriveFromDecks() {
 
 $("#coll-filter").addEventListener("input", (e) => renderCollection(e.target.value.trim().toLowerCase()));
 
+$("#import-btn").addEventListener("click", async () => {
+  const text = $("#import-text").value;
+  const replace = $("#import-replace").checked;
+  const btn = $("#import-btn"); const out = $("#import-result");
+  btn.disabled = true; out.className = "muted"; out.textContent = "Importing…";
+  try {
+    const r = await fetch("/api/collection/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, replace }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    const unmatchedBlock = data.unmatched_lines
+      ? `<pre>Unmatched samples:\n${data.unmatched_samples.map(escapeHtml).join("\n")}</pre>`
+      : "";
+    out.className = "success";
+    out.innerHTML = `Imported ${data.unique_cards} unique cards (${data.total_cards} total) · matched ${data.matched_lines} lines, skipped ${data.unmatched_lines}.${unmatchedBlock}`;
+    await loadCollection();
+  } catch (e) {
+    out.className = "error";
+    out.textContent = `Import failed: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 function renderCollection(filter) {
   const grid = $("#collection-grid");
   grid.innerHTML = "";

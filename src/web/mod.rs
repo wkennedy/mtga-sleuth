@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use axum::http::{header, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use rust_embed::RustEmbed;
 use tower_http::trace::TraceLayer;
@@ -11,6 +11,7 @@ use tower_http::trace::TraceLayer;
 use crate::state::AppState;
 
 mod api;
+mod import;
 mod sse;
 
 #[derive(RustEmbed)]
@@ -26,6 +27,7 @@ pub async fn serve(bind: String, state: Arc<AppState>) -> Result<()> {
         .route("/api/matches", get(api::list_matches))
         .route("/api/matches/{id}", get(api::get_match))
         .route("/api/collection", get(api::collection))
+        .route("/api/collection/import", post(import::import))
         .route("/api/wallet", get(api::wallet))
         .route("/api/drafts", get(api::list_drafts))
         .route("/api/drafts/{id}", get(api::get_draft))

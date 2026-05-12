@@ -44,6 +44,8 @@ pub async fn handle(state: &AppState, event: &ParsedEvent) -> Result<()> {
         .execute(&state.pool)
         .await?;
         tracing::info!(draft_id, pack_n, pick_n, picked_id, "draft pick recorded");
+        // Each pick adds the card to the user's collection.
+        super::inventory_changes::record_delta(&state.pool, picked_id, 1, "draft", Some(&draft_id)).await?;
     }
 
     Ok(())
