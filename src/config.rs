@@ -6,6 +6,9 @@ use directories::{BaseDirs, ProjectDirs};
 /// Default MTGA Player.log location for Snap Steam + Proton (app id 2141910).
 const DEFAULT_LOG_RELATIVE: &str = "snap/steam/common/.local/share/Steam/steamapps/compatdata/2141910/pfx/drive_c/users/steamuser/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log";
 
+/// Default MTGA install dir (contains the Raw_ClientLocalization SQLite). Snap Steam.
+const DEFAULT_DATA_RELATIVE: &str = "snap/steam/common/.local/share/Steam/steamapps/common/MTGA/MTGA_Data/Downloads/Raw";
+
 /// Alternate locations checked when the Snap path is missing.
 fn fallback_log_paths(home: &Path) -> Vec<PathBuf> {
     let suffix = "steamapps/compatdata/2141910/pfx/drive_c/users/steamuser/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log";
@@ -21,6 +24,7 @@ pub struct Config {
     pub log_path: PathBuf,
     pub db_path: PathBuf,
     pub card_cache_path: PathBuf,
+    pub mtga_data_dir: PathBuf,
     pub bind_override: Option<String>,
 }
 
@@ -52,11 +56,13 @@ impl Config {
 
         let db_path = db_override.map(PathBuf::from).unwrap_or_else(|| data_dir.join("tracker.sqlite"));
         let card_cache_path = cache_dir.join("scryfall-arena.json");
+        let mtga_data_dir = base.home_dir().join(DEFAULT_DATA_RELATIVE);
 
         Ok(Self {
             log_path,
             db_path,
             card_cache_path,
+            mtga_data_dir,
             bind_override: None,
         })
     }

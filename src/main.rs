@@ -8,6 +8,7 @@ use tracing_subscriber::EnvFilter;
 mod cards;
 mod config;
 mod db;
+mod localization;
 mod log_watcher;
 mod parser;
 mod state;
@@ -47,6 +48,7 @@ async fn main() -> Result<()> {
 
     let pool = db::init(&config.db_path).await?;
     let card_db = Arc::new(cards::CardDb::load_or_fetch(&config.card_cache_path, cli.no_card_db).await?);
+    let loc_db = Arc::new(localization::LocDb::load_or_empty(&config.mtga_data_dir).await);
 
     let (event_tx, _) = broadcast::channel(1024);
     let (line_tx, line_rx) = mpsc::channel::<String>(4096);
@@ -62,7 +64,7 @@ async fn main() -> Result<()> {
     };
 
     // Lines → typed events → state engine + broadcaster
-    let state = Arc::new(state::AppState::new(pool.clone(), card_db.clone(), event_tx.clone()));
+    let state = Arc::new(state::AppState::new(pool.clone(), card_db.clone(), loc_db.clone(), event_tx.clone()));
     let parser_handle = {
         let state = state.clone();
         tokio::spawn(async move {

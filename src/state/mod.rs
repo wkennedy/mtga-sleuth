@@ -12,6 +12,7 @@ use sqlx::SqlitePool;
 use tokio::sync::{broadcast, RwLock};
 
 use crate::cards::CardDb;
+use crate::localization::LocDb;
 use crate::parser::{Direction, ParsedEvent};
 
 mod handlers;
@@ -55,6 +56,7 @@ pub enum LiveUpdate {
 pub struct AppState {
     pub pool: SqlitePool,
     pub cards: Arc<CardDb>,
+    pub loc: Arc<LocDb>,
     pub current: RwLock<Option<LiveMatch>>,
     pub updates: broadcast::Sender<LiveUpdate>,
     /// Lookup: deck_id → (name, mainboard map of arena_id→qty)
@@ -71,10 +73,16 @@ pub struct DeckSummary {
 }
 
 impl AppState {
-    pub fn new(pool: SqlitePool, cards: Arc<CardDb>, updates: broadcast::Sender<LiveUpdate>) -> Self {
+    pub fn new(
+        pool: SqlitePool,
+        cards: Arc<CardDb>,
+        loc: Arc<LocDb>,
+        updates: broadcast::Sender<LiveUpdate>,
+    ) -> Self {
         Self {
             pool,
             cards,
+            loc,
             current: RwLock::new(None),
             updates,
             deck_index: RwLock::new(HashMap::new()),

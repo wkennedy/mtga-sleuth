@@ -32,7 +32,16 @@ pub async fn list_decks(State(state): State<Arc<AppState>>) -> Result<Json<Vec<D
     )
     .fetch_all(&state.pool)
     .await?;
-    Ok(Json(rows.into_iter().map(|(deck_id, name, format, last_updated)| DeckRow { deck_id, name, format, last_updated }).collect()))
+    Ok(Json(
+        rows.into_iter()
+            .map(|(deck_id, name, format, last_updated)| DeckRow {
+                deck_id,
+                name: state.loc.translate(&name).into_owned(),
+                format,
+                last_updated,
+            })
+            .collect(),
+    ))
 }
 
 #[derive(Serialize)]
@@ -65,6 +74,7 @@ pub async fn get_deck(
             .fetch_optional(&state.pool)
             .await?;
     let (deck_id, name, format) = head.ok_or(ApiError::NotFound)?;
+    let name = state.loc.translate(&name).into_owned();
 
     let cards: Vec<(i64, i64, i64)> =
         sqlx::query_as("SELECT card_id, quantity, sideboard FROM deck_cards WHERE deck_id = ?")

@@ -106,8 +106,20 @@ function renderDeckCard(c) {
   return `<div class="deck-card">
     <span class="qty">${c.quantity}×</span>
     <span class="name">${escapeHtml(c.name)}</span>
-    <span class="cost">${escapeHtml(c.mana_cost ?? "")}</span>
+    <span class="cost">${renderManaCost(c.mana_cost)}</span>
   </div>`;
+}
+
+// Convert Scryfall-style mana cost text ("{2}{W/B}{X}") into inline SVG symbols
+// from Scryfall's CDN. The slug for a symbol is whatever's between the braces
+// with slashes removed: {W}→W, {W/B}→WB, {2/W}→2W, {W/P}→WP, {X}→X, {T}→T.
+function renderManaCost(text) {
+  if (!text) return "";
+  return String(text).replace(/\{([^}]+)\}/g, (_, sym) => {
+    const slug = sym.replace(/\//g, "");
+    const safe = encodeURIComponent(slug);
+    return `<img class="mana" src="https://svgs.scryfall.io/card-symbols/${safe}.svg" alt="{${escapeHtml(sym)}}" title="{${escapeHtml(sym)}}" loading="lazy">`;
+  });
 }
 
 // ---- Matches tab ----

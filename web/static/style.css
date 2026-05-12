@@ -165,7 +165,15 @@ ul.list li small { display: block; color: var(--muted); margin-top: 2px; }
 }
 .deck-card:hover { background: #232b39; }
 .deck-card .qty { color: var(--muted); }
-.deck-card .cost { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.deck-card .cost { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mana {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  margin-left: 1px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #00000033;
+}
 
 .wallet-grid {
   display: grid;
