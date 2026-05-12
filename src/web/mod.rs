@@ -23,7 +23,7 @@ pub async fn serve(bind: String, state: Arc<AppState>) -> Result<()> {
     let app = Router::new()
         .route("/api/health", get(api::health))
         .route("/api/live", get(api::live))
-        .route("/api/decks", get(api::list_decks))
+        .route("/api/decks", get(api::list_decks).post(api::create_deck))
         .route("/api/decks/analyze", post(wildcards::analyze_pasted))
         .route("/api/decks/{id}", get(api::get_deck))
         .route("/api/matches", get(api::list_matches))

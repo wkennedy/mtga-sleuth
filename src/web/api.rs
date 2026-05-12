@@ -102,6 +102,89 @@ pub async fn get_deck(
     }))
 }
 
+#[derive(Deserialize)]
+pub struct CreateDeckRequest {
+    pub name: String,
+    pub format: Option<String>,
+    /// Either preformatted `(arena_id, quantity)` pairs…
+    #[serde(default)]
+    pub mainboard: Vec<(u32, u32)>,
+    #[serde(default)]
+    pub sideboard: Vec<(u32, u32)>,
+    /// …or raw Arena-format text. If `text` is set, mainboard/sideboard are
+    /// re-parsed from it and any explicit pairs are ignored.
+    pub text: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct CreateDeckResponse {
+    pub deck_id: String,
+}
+
+/// POST /api/decks — create a user-authored deck. IDs are prefixed `user-`
+/// so MTGA-emitted decks (which use bare UUIDs) can never collide with them.
+pub async fn create_deck(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateDeckRequest>,
+) -> Result<Json<CreateDeckResponse>, ApiError> {
+    let name = req.name.trim();
+    if name.is_empty() {
+        return Err(ApiError::BadRequest("name is required".into()));
+    }
+
+    let (mainboard, sideboard) = if let Some(text) = req.text.as_deref() {
+        let parsed = crate::web::import::parse_arena_decklist(text, &state.cards);
+        let mut main: Vec<(u32, u32)> = Vec::new();
+        let mut side: Vec<(u32, u32)> = Vec::new();
+        for (id, qty, is_side) in parsed.entries {
+            if is_side { side.push((id, qty)); } else { main.push((id, qty)); }
+        }
+        (main, side)
+    } else {
+        (req.mainboard, req.sideboard)
+    };
+
+    if mainboard.is_empty() && sideboard.is_empty() {
+        return Err(ApiError::BadRequest("deck must contain at least one card".into()));
+    }
+
+    let deck_id = format!(
+        "user-{}",
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    );
+
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("INSERT INTO decks (deck_id, name, format) VALUES (?, ?, ?)")
+        .bind(&deck_id)
+        .bind(name)
+        .bind(req.format.as_deref())
+        .execute(&mut *tx)
+        .await?;
+    for (id, qty) in &mainboard {
+        sqlx::query(
+            "INSERT INTO deck_cards (deck_id, card_id, quantity, sideboard) VALUES (?, ?, ?, 0)",
+        )
+        .bind(&deck_id)
+        .bind(*id as i64)
+        .bind(*qty as i64)
+        .execute(&mut *tx)
+        .await?;
+    }
+    for (id, qty) in &sideboard {
+        sqlx::query(
+            "INSERT INTO deck_cards (deck_id, card_id, quantity, sideboard) VALUES (?, ?, ?, 1)",
+        )
+        .bind(&deck_id)
+        .bind(*id as i64)
+        .bind(*qty as i64)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+
+    Ok(Json(CreateDeckResponse { deck_id }))
+}
+
 #[derive(Serialize)]
 pub struct MatchRow {
     pub match_id: String,
@@ -347,14 +430,17 @@ pub async fn recent_events(
 pub enum ApiError {
     #[error("not found")]
     NotFound,
+    #[error("{0}")]
+    BadRequest(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
-        let (status, msg) = match self {
+        let (status, msg) = match &self {
             ApiError::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             ApiError::Sqlx(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
         (status, Json(json!({"error": msg}))).into_response()

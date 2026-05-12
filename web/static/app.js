@@ -79,7 +79,8 @@ async function loadDecks() {
   }
   for (const d of decksCache) {
     const li = document.createElement("li");
-    li.innerHTML = `${escapeHtml(d.name)}<small>${d.format ?? "?"} · ${d.last_updated.slice(0, 10)}</small>`;
+    const manual = d.deck_id.startsWith("user-") ? '<span class="deck-tag">manual</span>' : "";
+    li.innerHTML = `${escapeHtml(d.name)}${manual}<small>${d.format ?? "?"} · ${d.last_updated.slice(0, 10)}</small>`;
     li.addEventListener("click", () => loadDeckDetail(d.deck_id, li));
     ul.appendChild(li);
   }
@@ -94,6 +95,7 @@ async function loadDeckDetail(id, li) {
   det.innerHTML = `
     <h3>${escapeHtml(d.name)}</h3>
     <p class="muted">${d.format ?? "Unknown format"}</p>
+    ${renderDeckCharts(d.mainboard)}
     ${renderWildcardSummary(d)}
     <div class="deck-section">
       <h4>Mainboard (${d.mainboard.reduce((a, c) => a + c.quantity, 0)})</h4>
@@ -134,7 +136,15 @@ function renderWildcardSummary(d) {
   </div>`;
 }
 
-// ---- Decks tab: paste-to-analyze ----
+// ---- Decks tab: paste-to-analyze + save-as-deck ----
+function syncSaveButton() {
+  const hasText = $("#analyze-text").value.trim().length > 0;
+  const hasName = $("#save-deck-name").value.trim().length > 0;
+  $("#save-deck-btn").disabled = !(hasText && hasName);
+}
+$("#analyze-text").addEventListener("input", syncSaveButton);
+$("#save-deck-name").addEventListener("input", syncSaveButton);
+
 $("#analyze-btn").addEventListener("click", async () => {
   const text = $("#analyze-text").value;
   const btn = $("#analyze-btn"); const out = $("#analyze-result"); const detail = $("#analyze-detail");
@@ -153,6 +163,7 @@ $("#analyze-btn").addEventListener("click", async () => {
     out.className = "success";
     out.innerHTML = `Parsed ${data.matched_lines} lines, skipped ${data.unmatched_lines}.${unmatchedBlock}`;
     detail.innerHTML = `
+      ${renderDeckCharts(data.mainboard)}
       ${renderWildcardSummary(data)}
       <div class="deck-section">
         <h4>Mainboard (${data.mainboard.reduce((a, c) => a + c.quantity, 0)})</h4>
@@ -167,6 +178,107 @@ $("#analyze-btn").addEventListener("click", async () => {
     btn.disabled = false;
   }
 });
+
+$("#save-deck-btn").addEventListener("click", async () => {
+  const text = $("#analyze-text").value;
+  const name = $("#save-deck-name").value.trim();
+  const btn = $("#save-deck-btn"); const out = $("#analyze-result");
+  btn.disabled = true; out.className = "muted"; out.textContent = "Saving…";
+  try {
+    const r = await fetch("/api/decks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, text }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    out.className = "success";
+    out.textContent = `Saved as "${name}". Open it from the deck list below.`;
+    await loadDecks();
+  } catch (e) {
+    out.className = "error";
+    out.textContent = `Save failed: ${e.message}`;
+  } finally {
+    syncSaveButton();
+  }
+});
+
+// ---- Mana curve + color pip charts ----
+//
+// Both charts read from the mainboard (lands excluded). The pip chart counts
+// each {W}/{U}/… symbol in mana_cost weighted by card quantity; hybrid pips
+// like {W/B} contribute 0.5 to each color so the visual stays honest.
+const PIP_COLORS = { W: "#f5e9c5", U: "#7aa7d6", B: "#5c5c5c", R: "#d97a3c", G: "#7ab87a", C: "#bfbfbf" };
+
+function isLand(typeLine) {
+  return typeLine != null && /\bLand\b/.test(typeLine);
+}
+
+function buildCurve(cards) {
+  const buckets = [0, 0, 0, 0, 0, 0, 0, 0]; // 0,1,2,3,4,5,6,7+
+  for (const c of cards) {
+    if (isLand(c.type_line)) continue;
+    const cmc = Math.max(0, Math.round(c.cmc ?? 0));
+    const idx = Math.min(7, cmc);
+    buckets[idx] += c.quantity;
+  }
+  return buckets;
+}
+
+function buildPips(cards) {
+  const pips = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+  for (const c of cards) {
+    if (isLand(c.type_line)) continue;
+    if (!c.mana_cost) continue;
+    for (const m of c.mana_cost.matchAll(/\{([^}]+)\}/g)) {
+      const sym = m[1];
+      // Bucket each symbol. Hybrid like W/B splits 0.5/0.5; phyrexian W/P → 1 W.
+      const colors = sym.split("/").filter((s) => /^[WUBRG]$/.test(s));
+      if (colors.length === 0) continue;
+      const w = c.quantity / colors.length;
+      for (const col of colors) pips[col] += w;
+    }
+  }
+  return pips;
+}
+
+function renderDeckCharts(mainboard) {
+  if (!mainboard || mainboard.length === 0) return "";
+  const curve = buildCurve(mainboard);
+  const pips = buildPips(mainboard);
+  const curveMax = Math.max(1, ...curve);
+  const curveBars = curve.map((v, i) => {
+    const h = Math.round((v / curveMax) * 80);
+    const label = i === 7 ? "7+" : String(i);
+    return `<div class="curve-col">
+      <div class="curve-bar" style="height:${h}px" title="CMC ${label}: ${v}"></div>
+      <div class="curve-label">${label}</div>
+      <div class="curve-count">${v}</div>
+    </div>`;
+  }).join("");
+  const totalPips = Object.values(pips).reduce((a, b) => a + b, 0);
+  const pipRows = ["W","U","B","R","G","C"].map((col) => {
+    const v = pips[col];
+    if (v === 0) return "";
+    const pct = totalPips ? (v / totalPips) * 100 : 0;
+    const sym = col === "C" ? "C" : col;
+    return `<div class="pip-row">
+      <img class="mana" src="https://svgs.scryfall.io/card-symbols/${sym}.svg" alt="{${sym}}">
+      <div class="pip-bar"><div class="pip-fill" style="width:${pct}%; background:${PIP_COLORS[col]}"></div></div>
+      <div class="pip-val">${v.toFixed(v % 1 ? 1 : 0)}</div>
+    </div>`;
+  }).join("");
+  return `<div class="charts">
+    <div class="chart-block">
+      <h4>Mana curve <small>(non-land)</small></h4>
+      <div class="curve">${curveBars}</div>
+    </div>
+    ${pipRows ? `<div class="chart-block">
+      <h4>Color pips</h4>
+      <div class="pips">${pipRows}</div>
+    </div>` : ""}
+  </div>`;
+}
 
 // Convert Scryfall-style mana cost text ("{2}{W/B}{X}") into inline SVG symbols
 // from Scryfall's CDN. The slug for a symbol is whatever's between the braces

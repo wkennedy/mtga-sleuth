@@ -53,7 +53,11 @@
         you're missing and the wildcards needed to craft them. Nothing is saved.
       </p>
       <textarea id="analyze-text" rows="10" placeholder="Deck&#10;4 Lightning Bolt (M21) 162&#10;...&#10;&#10;Sideboard&#10;2 Negate (NEO) 58"></textarea>
-      <button id="analyze-btn" class="primary">Analyze</button>
+      <div class="analyze-actions">
+        <input id="save-deck-name" placeholder="Deck name (optional, enables Save)" type="text">
+        <button id="analyze-btn" class="primary">Analyze</button>
+        <button id="save-deck-btn" class="primary" disabled>Save as deck</button>
+      </div>
       <div id="analyze-result" class="muted"></div>
       <div id="analyze-detail"></div>
     </details>
