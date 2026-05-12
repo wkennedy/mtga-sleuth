@@ -45,6 +45,19 @@
 
   <section id="tab-decks" class="panel" hidden>
     <h2>Decks</h2>
+
+    <details class="import-panel">
+      <summary>Analyze a pasted decklist…</summary>
+      <p class="muted">
+        Paste any Arena-format list (with optional <code>Sideboard</code> header) to see which cards
+        you're missing and the wildcards needed to craft them. Nothing is saved.
+      </p>
+      <textarea id="analyze-text" rows="10" placeholder="Deck&#10;4 Lightning Bolt (M21) 162&#10;...&#10;&#10;Sideboard&#10;2 Negate (NEO) 58"></textarea>
+      <button id="analyze-btn" class="primary">Analyze</button>
+      <div id="analyze-result" class="muted"></div>
+      <div id="analyze-detail"></div>
+    </details>
+
     <div class="split">
       <ul id="decks-list" class="list"></ul>
       <div id="deck-detail" class="detail"><p class="muted">Pick a deck to see its contents.</p></div>

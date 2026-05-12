@@ -158,14 +158,48 @@ ul.list li small { display: block; color: var(--muted); margin-top: 2px; }
 .deck-section h4 { color: var(--muted); font-size: 12px; text-transform: uppercase; margin: 0 0 6px; }
 .deck-card {
   display: grid;
-  grid-template-columns: 30px 1fr 60px;
+  grid-template-columns: 30px 1fr 56px 80px;
   padding: 4px 8px;
   border-radius: 4px;
   align-items: center;
+  gap: 6px;
 }
 .deck-card:hover { background: #232b39; }
 .deck-card .qty { color: var(--muted); }
 .deck-card .cost { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.deck-card .own {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  text-align: right;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #232b39;
+}
+.deck-card .own.good { color: var(--good); }
+.deck-card .own.bad { color: var(--bad); background: #3a1f1f; }
+.deck-card.missing { background: #2a1a1a; }
+.deck-card.missing:hover { background: #34201f; }
+
+.wc-summary {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 12px 0 16px;
+}
+.wc-summary.complete {
+  color: var(--good);
+  text-align: center;
+  font-weight: 500;
+}
+.wc-summary-head {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.wc-summary .wallet-grid { margin-bottom: 0; }
 .mana {
   width: 14px;
   height: 14px;

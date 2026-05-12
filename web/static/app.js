@@ -94,6 +94,7 @@ async function loadDeckDetail(id, li) {
   det.innerHTML = `
     <h3>${escapeHtml(d.name)}</h3>
     <p class="muted">${d.format ?? "Unknown format"}</p>
+    ${renderWildcardSummary(d)}
     <div class="deck-section">
       <h4>Mainboard (${d.mainboard.reduce((a, c) => a + c.quantity, 0)})</h4>
       ${d.mainboard.map(renderDeckCard).join("")}
@@ -103,12 +104,69 @@ async function loadDeckDetail(id, li) {
 }
 
 function renderDeckCard(c) {
-  return `<div class="deck-card">
+  const missingClass = c.missing > 0 ? " missing" : "";
+  const ownedTxt = c.missing > 0
+    ? `<span class="own bad">${c.owned}/${c.quantity}</span>`
+    : `<span class="own good">${c.quantity}/${c.quantity}</span>`;
+  return `<div class="deck-card${missingClass}">
     <span class="qty">${c.quantity}×</span>
     <span class="name">${escapeHtml(c.name)}</span>
+    ${ownedTxt}
     <span class="cost">${renderManaCost(c.mana_cost)}</span>
   </div>`;
 }
+
+function renderWildcardSummary(d) {
+  const wc = d.wildcards_needed || { common: 0, uncommon: 0, rare: 0, mythic: 0 };
+  const total = (wc.common || 0) + (wc.uncommon || 0) + (wc.rare || 0) + (wc.mythic || 0);
+  if (total === 0) {
+    return `<div class="wc-summary complete">You own every non-basic card in this deck.</div>`;
+  }
+  const tile = (label, val, cls) => `<div class="wallet-tile ${cls}"><div class="label">${label}</div><div class="value">${val}</div></div>`;
+  return `<div class="wc-summary">
+    <div class="wc-summary-head">Missing ${d.total_missing} copies (${d.unique_missing} unique). Wildcards needed:</div>
+    <div class="wallet-grid">
+      ${tile("Common", wc.common || 0, "wc-common")}
+      ${tile("Uncommon", wc.uncommon || 0, "wc-uncommon")}
+      ${tile("Rare", wc.rare || 0, "wc-rare")}
+      ${tile("Mythic", wc.mythic || 0, "wc-mythic")}
+    </div>
+  </div>`;
+}
+
+// ---- Decks tab: paste-to-analyze ----
+$("#analyze-btn").addEventListener("click", async () => {
+  const text = $("#analyze-text").value;
+  const btn = $("#analyze-btn"); const out = $("#analyze-result"); const detail = $("#analyze-detail");
+  btn.disabled = true; out.className = "muted"; out.textContent = "Analyzing…"; detail.innerHTML = "";
+  try {
+    const r = await fetch("/api/decks/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    const unmatchedBlock = data.unmatched_lines
+      ? `<pre>Unmatched samples:\n${data.unmatched_samples.map(escapeHtml).join("\n")}</pre>`
+      : "";
+    out.className = "success";
+    out.innerHTML = `Parsed ${data.matched_lines} lines, skipped ${data.unmatched_lines}.${unmatchedBlock}`;
+    detail.innerHTML = `
+      ${renderWildcardSummary(data)}
+      <div class="deck-section">
+        <h4>Mainboard (${data.mainboard.reduce((a, c) => a + c.quantity, 0)})</h4>
+        ${data.mainboard.map(renderDeckCard).join("")}
+      </div>
+      ${data.sideboard.length ? `<div class="deck-section"><h4>Sideboard (${data.sideboard.reduce((a, c) => a + c.quantity, 0)})</h4>${data.sideboard.map(renderDeckCard).join("")}</div>` : ""}
+    `;
+  } catch (e) {
+    out.className = "error";
+    out.textContent = `Analyze failed: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // Convert Scryfall-style mana cost text ("{2}{W/B}{X}") into inline SVG symbols
 // from Scryfall's CDN. The slug for a symbol is whatever's between the braces

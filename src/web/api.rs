@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 
 use crate::cards::Card;
 use crate::state::{AppState, LiveMatch};
+use crate::web::wildcards;
 
 pub async fn health() -> impl IntoResponse {
     Json(json!({"ok": true, "service": "mtga-tracker"}))
@@ -51,6 +52,9 @@ pub struct DeckDetail {
     pub format: Option<String>,
     pub mainboard: Vec<DeckCardEntry>,
     pub sideboard: Vec<DeckCardEntry>,
+    pub wildcards_needed: wildcards::WildcardCost,
+    pub unique_missing: u32,
+    pub total_missing: u32,
 }
 
 #[derive(Serialize)]
@@ -61,7 +65,10 @@ pub struct DeckCardEntry {
     pub mana_cost: Option<String>,
     pub cmc: Option<f32>,
     pub rarity: Option<String>,
+    pub type_line: Option<String>,
     pub image_small: Option<String>,
+    pub owned: u32,
+    pub missing: u32,
 }
 
 pub async fn get_deck(
@@ -82,31 +89,17 @@ pub async fn get_deck(
             .fetch_all(&state.pool)
             .await?;
 
-    let (main, side): (Vec<_>, Vec<_>) = cards.into_iter().partition(|(_, _, s)| *s == 0);
+    let analysis = wildcards::analyze(&state, &state.pool, cards).await?;
     Ok(Json(DeckDetail {
         deck_id,
         name,
         format,
-        mainboard: hydrate(&state, main),
-        sideboard: hydrate(&state, side),
+        mainboard: analysis.mainboard,
+        sideboard: analysis.sideboard,
+        wildcards_needed: analysis.cost,
+        unique_missing: analysis.unique_missing,
+        total_missing: analysis.total_missing,
     }))
-}
-
-fn hydrate(state: &AppState, rows: Vec<(i64, i64, i64)>) -> Vec<DeckCardEntry> {
-    rows.into_iter()
-        .map(|(card_id, qty, _)| {
-            let card = state.cards.get(card_id as u32);
-            DeckCardEntry {
-                arena_id: card_id as u32,
-                quantity: qty as u32,
-                name: card.map(|c| c.name.clone()).unwrap_or_else(|| format!("Card #{card_id}")),
-                mana_cost: card.and_then(|c| c.mana_cost.clone()),
-                cmc: card.and_then(|c| c.cmc),
-                rarity: card.and_then(|c| c.rarity.clone()),
-                image_small: card.and_then(|c| c.image_small.clone()),
-            }
-        })
-        .collect()
 }
 
 #[derive(Serialize)]
@@ -293,7 +286,10 @@ fn card_to_entry(state: &AppState, arena_id: u32, qty: u32) -> DeckCardEntry {
         mana_cost: c.and_then(|c| c.mana_cost.clone()),
         cmc: c.and_then(|c| c.cmc),
         rarity: c.and_then(|c| c.rarity.clone()),
+        type_line: c.and_then(|c| c.type_line.clone()),
         image_small: c.and_then(|c| c.image_small.clone()),
+        owned: 0,
+        missing: 0,
     }
 }
 

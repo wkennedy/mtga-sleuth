@@ -10,9 +10,10 @@ use tower_http::trace::TraceLayer;
 
 use crate::state::AppState;
 
-mod api;
-mod import;
+pub mod api;
+pub mod import;
 mod sse;
+pub mod wildcards;
 
 #[derive(RustEmbed)]
 #[folder = "web/static/"]
@@ -23,6 +24,7 @@ pub async fn serve(bind: String, state: Arc<AppState>) -> Result<()> {
         .route("/api/health", get(api::health))
         .route("/api/live", get(api::live))
         .route("/api/decks", get(api::list_decks))
+        .route("/api/decks/analyze", post(wildcards::analyze_pasted))
         .route("/api/decks/{id}", get(api::get_deck))
         .route("/api/matches", get(api::list_matches))
         .route("/api/matches/{id}", get(api::get_match))
