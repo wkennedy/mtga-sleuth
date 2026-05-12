@@ -1,0 +1,14 @@
+CREATE TABLE wallet (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    gold INTEGER NOT NULL DEFAULT 0,
+    gems INTEGER NOT NULL DEFAULT 0,
+    wc_common INTEGER NOT NULL DEFAULT 0,
+    wc_uncommon INTEGER NOT NULL DEFAULT 0,
+    wc_rare INTEGER NOT NULL DEFAULT 0,
+    wc_mythic INTEGER NOT NULL DEFAULT 0,
+    vault_progress INTEGER NOT NULL DEFAULT 0,
+    wc_track_position INTEGER NOT NULL DEFAULT 0,
+    boosters TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO wallet (id) VALUES (1);

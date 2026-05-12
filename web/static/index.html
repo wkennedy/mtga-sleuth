@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MTGA Tracker</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>MTGA Tracker</h1>
+  <nav>
+    <button class="tab" data-tab="live">Live</button>
+    <button class="tab" data-tab="decks">Decks</button>
+    <button class="tab" data-tab="matches">Matches</button>
+    <button class="tab" data-tab="collection">Collection</button>
+    <button class="tab" data-tab="drafts">Drafts</button>
+    <button class="tab" data-tab="events">Events</button>
+  </nav>
+  <span id="conn" class="conn-pill">connecting…</span>
+</header>
+
+<main>
+  <section id="tab-live" class="panel">
+    <div id="live-empty" class="empty">No active match. Start a game in MTGA — events will appear here.</div>
+    <div id="live-content" hidden>
+      <div class="match-meta">
+        <div><strong>Match</strong> <span id="m-id">—</span></div>
+        <div><strong>Opponent</strong> <span id="m-opp">—</span></div>
+        <div><strong>Turn</strong> <span id="m-turn">—</span></div>
+        <div><strong>Life</strong> <span id="m-life">— / —</span></div>
+      </div>
+      <div class="cols">
+        <div>
+          <h2>Library remaining <small id="lib-count"></small></h2>
+          <ol id="library"></ol>
+        </div>
+        <div>
+          <h2>Opponent revealed</h2>
+          <ol id="revealed"></ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-decks" class="panel" hidden>
+    <h2>Decks</h2>
+    <div class="split">
+      <ul id="decks-list" class="list"></ul>
+      <div id="deck-detail" class="detail"><p class="muted">Pick a deck to see its contents.</p></div>
+    </div>
+  </section>
+
+  <section id="tab-matches" class="panel" hidden>
+    <h2>Match history</h2>
+    <table id="matches-table">
+      <thead><tr><th>Started</th><th>Opponent</th><th>Event</th><th>Result</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section id="tab-collection" class="panel" hidden>
+    <h2>Wallet</h2>
+    <div id="wallet-grid" class="wallet-grid">
+      <p class="muted">Loading…</p>
+    </div>
+
+    <h2 style="margin-top:24px">Per-card collection</h2>
+    <p class="muted">
+      MTGA's detailed log no longer emits per-card collection counts (last seen
+      working in older client versions). What you see here is computed from the
+      union of cards across <em>your saved decks</em> — so it's a lower bound,
+      not the full collection.
+    </p>
+    <input id="coll-filter" placeholder="Filter by name…" type="search">
+    <div id="collection-grid" class="grid"></div>
+  </section>
+
+  <section id="tab-drafts" class="panel" hidden>
+    <h2>Drafts</h2>
+    <div class="split">
+      <ul id="drafts-list" class="list"></ul>
+      <div id="draft-detail" class="detail"><p class="muted">Pick a draft to inspect picks.</p></div>
+    </div>
+  </section>
+
+  <section id="tab-events" class="panel" hidden>
+    <h2>Recent log events</h2>
+    <p class="muted">Newest 100 events. Use this to debug parsing — if nothing shows, check that <strong>Detailed Logs (Plugin Support)</strong> is enabled in MTGA → Account.</p>
+    <input id="events-filter" placeholder="Filter by kind (e.g. GreToClientEvent)…" type="search">
+    <pre id="events-pre"></pre>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
