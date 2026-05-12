@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "tracker-db": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-sqlite",
+        "--db-path",
+        "/home/waggins/.local/share/mtga-tracker/tracker.sqlite"
+      ]
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"]
+    }
+  }
+}
