@@ -1,4 +1,4 @@
-// MTGA Tracker frontend — single-page, no framework.
+// MTGA Sleuth frontend — single-page, no framework.
 //
 // Subscribes to /api/sse for live updates and lazily fetches each tab's data.
 
@@ -328,6 +328,7 @@ async function loadCollection() {
     // Derive a fallback from current decks: sum max-quantity-per-card across decks.
     collectionCache = await deriveFromDecks();
   }
+  collPage = 1;
   renderCollection("");
 }
 
@@ -394,8 +395,12 @@ function colorsFromManaCost(cost) {
 // AND-across-groups.
 const collFilters = { name: "", color: new Set(), rarity: new Set(), type: new Set() };
 
+const COLLECTION_PAGE_SIZE = 30;
+let collPage = 1;
+
 $("#coll-filter").addEventListener("input", (e) => {
   collFilters.name = e.target.value.trim().toLowerCase();
+  collPage = 1;
   renderCollection();
 });
 
@@ -406,6 +411,7 @@ $$(".filter-bar .filter-chip").forEach((btn) => {
     const set = collFilters[group];
     if (set.has(value)) { set.delete(value); btn.classList.remove("active"); }
     else { set.add(value); btn.classList.add("active"); }
+    collPage = 1;
     renderCollection();
   });
 });
@@ -417,6 +423,15 @@ $("#filter-clear").addEventListener("click", () => {
   collFilters.name = "";
   $("#coll-filter").value = "";
   $$(".filter-bar .filter-chip.active").forEach((b) => b.classList.remove("active"));
+  collPage = 1;
+  renderCollection();
+});
+
+$("#pager-prev").addEventListener("click", () => {
+  if (collPage > 1) { collPage--; renderCollection(); }
+});
+$("#pager-next").addEventListener("click", () => {
+  collPage++;
   renderCollection();
 });
 
@@ -467,17 +482,28 @@ $("#import-btn").addEventListener("click", async () => {
 
 function renderCollection() {
   const grid = $("#collection-grid");
+  const pager = $("#collection-pager");
   grid.innerHTML = "";
+  pager.hidden = true;
   if (collectionCache.length === 0) {
     grid.innerHTML = '<p class="muted">No deck-derived cards yet — visit the Decks screen in MTGA so it sends your deck list.</p>';
     return;
   }
-  let shown = 0;
-  for (const c of collectionCache) {
-    if (collFilters.name && !c.name.toLowerCase().includes(collFilters.name)) continue;
-    if (!matchesColorFilter(c, collFilters.color)) continue;
-    if (collFilters.rarity.size > 0 && !collFilters.rarity.has(c.rarity)) continue;
-    if (!matchesTypeFilter(c, collFilters.type)) continue;
+  const matches = collectionCache.filter((c) =>
+    (!collFilters.name || c.name.toLowerCase().includes(collFilters.name)) &&
+    matchesColorFilter(c, collFilters.color) &&
+    (collFilters.rarity.size === 0 || collFilters.rarity.has(c.rarity)) &&
+    matchesTypeFilter(c, collFilters.type)
+  );
+  if (matches.length === 0) {
+    grid.innerHTML = '<p class="muted">No cards match the current filters.</p>';
+    return;
+  }
+  const totalPages = Math.max(1, Math.ceil(matches.length / COLLECTION_PAGE_SIZE));
+  if (collPage > totalPages) collPage = totalPages;
+  const start = (collPage - 1) * COLLECTION_PAGE_SIZE;
+  const slice = matches.slice(start, start + COLLECTION_PAGE_SIZE);
+  for (const c of slice) {
     const tile = document.createElement("div");
     tile.className = "card-tile";
     // Scryfall serves the same image at /small/, /normal/, /large/ — swap the
@@ -493,11 +519,13 @@ function renderCollection() {
       <div class="qty">×${c.quantity}</div>
     `;
     grid.appendChild(tile);
-    shown++;
   }
-  if (shown === 0) {
-    grid.innerHTML = '<p class="muted">No cards match the current filters.</p>';
-  }
+  pager.hidden = false;
+  $("#pager-prev").disabled = collPage <= 1;
+  $("#pager-next").disabled = collPage >= totalPages;
+  const rangeEnd = Math.min(start + COLLECTION_PAGE_SIZE, matches.length);
+  $("#pager-status").textContent =
+    `${start + 1}–${rangeEnd} of ${matches.length} · page ${collPage}/${totalPages}`;
 }
 
 // ---- Hover preview (collection grid) ----

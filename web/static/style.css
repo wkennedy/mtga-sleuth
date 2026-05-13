@@ -438,6 +438,27 @@ button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .filter-clear:hover { color: var(--text); border-color: var(--accent); }
 
+.pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  margin: 16px 0 8px;
+}
+.pager-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.pager-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.pager-btn:disabled { opacity: 0.4; cursor: default; }
+.pager-status { color: var(--muted); font-size: 12px; }
+
 /* Hover-preview popover */
 #card-preview {
   position: fixed;

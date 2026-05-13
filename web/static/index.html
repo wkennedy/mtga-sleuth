@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MTGA Tracker</title>
+<title>MTGA Sleuth</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header>
-  <h1>MTGA Tracker</h1>
+  <h1>MTGA Sleuth</h1>
   <nav>
     <button class="tab" data-tab="live">Live</button>
     <button class="tab" data-tab="decks">Decks</button>
@@ -140,6 +140,11 @@
     </div>
 
     <div id="collection-grid" class="grid"></div>
+    <div id="collection-pager" class="pager" hidden>
+      <button id="pager-prev" class="pager-btn">‹ Prev</button>
+      <span id="pager-status" class="pager-status"></span>
+      <button id="pager-next" class="pager-btn">Next ›</button>
+    </div>
     <div id="card-preview" hidden><img alt=""></div>
   </section>
 
