@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Download Scryfall assets used by mtga-tracker for offline use.
+"""Download Scryfall assets used by mtga-sleuth for offline use.
 
-Reads the existing card cache at ~/.cache/mtga-tracker/scryfall-arena.json
+Reads the existing card cache at ~/.cache/mtga-sleuth/scryfall-arena.json
 (populated by running the tracker at least once) and downloads:
 
   * Mana symbol SVGs (Scryfall /symbology endpoint)
   * Card images at the requested sizes (small / normal / large)
 
-Files are stored under ~/.cache/mtga-tracker/assets/ and skipped if already
+Files are stored under ~/.cache/mtga-sleuth/assets/ and skipped if already
 present, so re-running just fills in what's missing.
 
 Approximate disk usage for the full ~16k Arena card pool:
@@ -32,11 +32,11 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-CACHE_ROOT = Path.home() / ".cache" / "mtga-tracker"
+CACHE_ROOT = Path.home() / ".cache" / "mtga-sleuth"
 CARD_CACHE = CACHE_ROOT / "scryfall-arena.json"
 ASSET_ROOT = CACHE_ROOT / "assets"
 SYMBOLOGY_URL = "https://api.scryfall.com/symbology"
-USER_AGENT = "mtga-tracker-asset-downloader/0.1 (+https://github.com/local)"
+USER_AGENT = "mtga-sleuth-asset-downloader/0.1 (+https://github.com/local)"
 VALID_SIZES = ("small", "normal", "large")
 
 

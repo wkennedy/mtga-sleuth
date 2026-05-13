@@ -5,7 +5,7 @@
       "args": [
         "mcp-server-sqlite",
         "--db-path",
-        "/home/waggins/.local/share/mtga-tracker/tracker.sqlite"
+        "~/.local/share/mtga-sleuth/tracker.sqlite"
       ]
     },
     "fetch": {

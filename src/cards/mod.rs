@@ -158,7 +158,7 @@ fn build_db(cards: Vec<Card>) -> CardDb {
 
 async fn fetch_and_cache(cache_path: &Path) -> Result<CardDb> {
     let client = reqwest::Client::builder()
-        .user_agent("mtga-tracker/0.1 (+https://github.com/local)")
+        .user_agent("mtga-sleuth/0.1 (+https://github.com/local)")
         .build()?;
 
     tracing::info!("fetching Scryfall bulk-data index");

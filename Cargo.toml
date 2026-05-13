@@ -1,5 +1,5 @@
 [package]
-name = "mtga-tracker"
+name = "mtga-sleuth"
 version = "0.1.0"
 edition = "2021"
 description = "Local MTG Arena tracker for Linux: live deck tracker, match history, draft helper, collection viewer"

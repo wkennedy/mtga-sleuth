@@ -1303,7 +1303,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mtga-tracker"
+name = "mtga-sleuth"
 version = "0.1.0"
 dependencies = [
  "anyhow",

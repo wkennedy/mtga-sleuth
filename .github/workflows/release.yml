@@ -60,22 +60,22 @@ jobs:
           BUNDLED_CARDS_FORCE_REFRESH: "1"
 
       - name: Strip binary
-        run: strip target/x86_64-unknown-linux-musl/release/mtga-tracker
+        run: strip target/x86_64-unknown-linux-musl/release/mtga-sleuth
 
       - name: Sanity-check static linkage
         # No NEEDED entries == fully static. If this prints anything, the build
         # accidentally pulled in a dynamic dep and the release would fail on
         # systems without it. Fail loudly here instead.
         run: |
-          ! ldd target/x86_64-unknown-linux-musl/release/mtga-tracker 2>&1 | grep -E "=>"
+          ! ldd target/x86_64-unknown-linux-musl/release/mtga-sleuth 2>&1 | grep -E "=>"
 
       - name: Package release tarball
         run: |
           set -eux
           tag="${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}"
-          stage="mtga-tracker-${tag}-x86_64-linux-musl"
+          stage="mtga-sleuth-${tag}-x86_64-linux-musl"
           mkdir -p "$stage"
-          cp target/x86_64-unknown-linux-musl/release/mtga-tracker "$stage/"
+          cp target/x86_64-unknown-linux-musl/release/mtga-sleuth "$stage/"
           cp README.md LICENSE* "$stage/" 2>/dev/null || true
           cp -r scripts "$stage/scripts"
           tar czf "${stage}.tar.gz" "$stage"
@@ -88,7 +88,7 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           fail_on_unmatched_files: true
           files: |
-            mtga-tracker-*-x86_64-linux-musl.tar.gz
-            mtga-tracker-*-x86_64-linux-musl.tar.gz.sha256
+            mtga-sleuth-*-x86_64-linux-musl.tar.gz
+            mtga-sleuth-*-x86_64-linux-musl.tar.gz.sha256
           generate_release_notes: true
           draft: false

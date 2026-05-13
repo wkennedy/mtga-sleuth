@@ -1,4 +1,4 @@
-# mtga-tracker
+# mtga-sleuth
 
 A local **Magic: the Gathering Arena** tracker for Linux. Watches MTGA's
 `Player.log`, parses game / deck / draft / collection events, and serves a
@@ -57,7 +57,7 @@ filtered to a ~8 MB on-disk JSON). Subsequent launches use the cached subset
 
 ### Pre-built binary (recommended for non-Rust users)
 
-Grab the latest static `mtga-tracker` binary from
+Grab the latest static `mtga-sleuth` binary from
 [Releases](../../releases) — no Rust toolchain or runtime deps required, works
 on any glibc / musl Linux. Just `chmod +x` and run.
 
@@ -84,7 +84,7 @@ All settings can be passed as flags or environment variables:
 | `--log-path`     | `MTGA_LOG_PATH`  | Auto-detected from common Steam install paths    |
 | `--data-dir`     | `MTGA_DATA_DIR`  | Auto-detected MTGA install (for localization)    |
 | `--bind`         | `MTGA_BIND`      | `127.0.0.1:7843`                                 |
-| `--db-path`      | `MTGA_DB_PATH`   | `~/.local/share/mtga-tracker/tracker.sqlite`     |
+| `--db-path`      | `MTGA_DB_PATH`   | `~/.local/share/mtga-sleuth/tracker.sqlite`     |
 | `--no-card-db`   | —                | Skip Scryfall download (names only)              |
 
 Increase log verbosity with `RUST_LOG=mtga_tracker=debug`.
@@ -97,12 +97,12 @@ MTGA via Lutris, Bottles, or a custom Wine prefix, point the tracker at
 
 ```bash
 # Lutris (default magic-the-gathering-arena install):
-mtga-tracker \
+mtga-sleuth \
   --log-path "$HOME/Games/magic-the-gathering-arena/drive_c/users/$USER/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log" \
   --data-dir "$HOME/Games/magic-the-gathering-arena/drive_c/Program Files/Wizards of the Coast/MTGA/MTGA_Data/Downloads/Raw"
 
 # Bottles (substitute your bottle name):
-mtga-tracker \
+mtga-sleuth \
   --log-path "$HOME/.var/app/com.usebottles.bottles/data/bottles/bottles/MTGA/drive_c/users/$USER/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log"
 ```
 
@@ -119,7 +119,7 @@ scripts/download_assets.py --sizes small   # just thumbnails (~640 MB)
 scripts/download_assets.py --symbols-only  # mana SVGs only (~150 KB)
 ```
 
-Files are stored under `~/.cache/mtga-tracker/assets/`. The tracker's
+Files are stored under `~/.cache/mtga-sleuth/assets/`. The tracker's
 `/cdn/{*}` route serves from this directory when files are present and
 falls back to Scryfall otherwise — the UI works the same either way.
 

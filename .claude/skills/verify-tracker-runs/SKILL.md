@@ -22,7 +22,7 @@ cargo build --release 2>&1 | tail -3
 # running on the default), and a temp DB so we don't touch their data.
 PORT=7848
 TESTDB=/tmp/test-mtga-$$.sqlite
-/home/waggins/projects/mtga-tracker/target/release/mtga-tracker \
+./target/release/mtga-sleuth \
   --no-card-db --bind 127.0.0.1:$PORT --db-path $TESTDB 2>&1 &
 SP=$!
 trap "kill \$SP 2>/dev/null; rm -f $TESTDB*" EXIT
@@ -63,7 +63,7 @@ fall back to "Card #<id>" placeholders, which is fine for smoke checks.
 
 - Don't bind to `127.0.0.1:7843` (the default) — the user may already have
   their own instance running there.
-- Don't reuse `~/.local/share/mtga-tracker/tracker.sqlite` — that's the
+- Don't reuse `~/.local/share/mtga-sleuth/tracker.sqlite` — that's the
   user's real data. Always pass `--db-path /tmp/...`.
 - Don't `rm` the user's real DB unless they explicitly asked. The auto-mode
   classifier will block it anyway.

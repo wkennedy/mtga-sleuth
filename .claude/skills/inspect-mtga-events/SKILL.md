@@ -62,7 +62,7 @@ be hundreds of KB. Always slice and summarize.
 ```bash
 python3 -c "
 import sqlite3
-con = sqlite3.connect('$HOME/.local/share/mtga-tracker/tracker.sqlite')
+con = sqlite3.connect('$HOME/.local/share/mtga-sleuth/tracker.sqlite')
 for row in con.execute('SELECT kind, COUNT(*) FROM raw_events GROUP BY kind ORDER BY 2 DESC LIMIT 20'):
     print(row)
 "

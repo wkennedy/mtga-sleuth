@@ -12,7 +12,7 @@ use crate::state::{AppState, LiveMatch};
 use crate::web::wildcards;
 
 pub async fn health() -> impl IntoResponse {
-    Json(json!({"ok": true, "service": "mtga-tracker"}))
+    Json(json!({"ok": true, "service": "mtga-sleuth"}))
 }
 
 pub async fn live(State(state): State<Arc<AppState>>) -> Json<Option<LiveMatch>> {

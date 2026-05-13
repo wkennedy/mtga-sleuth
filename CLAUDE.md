@@ -14,10 +14,10 @@ Reference apps: mtgatool-desktop, Untapped Companion, 17lands.
 ## Stack
 
 - **Backend**: Rust 2021. axum 0.8, tokio, sqlx (sqlite, runtime-tokio-rustls).
-- **Persistence**: SQLite at `~/.local/share/mtga-tracker/tracker.sqlite` (WAL).
+- **Persistence**: SQLite at `~/.local/share/mtga-sleuth/tracker.sqlite` (WAL).
 - **Frontend**: Vanilla HTML/CSS/JS in `web/static/`, embedded into the binary
   via `rust-embed` at build time. **No JS toolchain** — edit the file, rebuild.
-- **Card data**: Scryfall bulk download cached at `~/.cache/mtga-tracker/scryfall-arena.json`,
+- **Card data**: Scryfall bulk download cached at `~/.cache/mtga-sleuth/scryfall-arena.json`,
   filtered to entries with an `arena_id`.
 
 ## Architecture

@@ -50,7 +50,7 @@ impl Config {
         data_dir_override: Option<String>,
     ) -> Result<Self> {
         let base = BaseDirs::new().context("could not determine HOME directory")?;
-        let project = ProjectDirs::from("dev", "mtga-tracker", "mtga-tracker")
+        let project = ProjectDirs::from("dev", "mtga-sleuth", "mtga-sleuth")
             .context("could not determine XDG project dirs")?;
 
         let log_path = match log_override {

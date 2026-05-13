@@ -93,7 +93,7 @@ fn http_get(url: &str) -> Vec<u8> {
     // runs (and we explicitly install it in the workflow if missing).
     let curl = env::var("CURL").unwrap_or_else(|_| "curl".to_string());
     let output = std::process::Command::new(&curl)
-        .args(["-fsSL", "-A", "mtga-tracker-build/0.1", "-H", "Accept: */*", url])
+        .args(["-fsSL", "-A", "mtga-sleuth-build/0.1", "-H", "Accept: */*", url])
         .output()
         .unwrap_or_else(|e| panic!("failed to run {curl}: {e}"));
     if !output.status.success() {
