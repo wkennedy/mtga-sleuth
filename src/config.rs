@@ -24,6 +24,7 @@ pub struct Config {
     pub log_path: PathBuf,
     pub db_path: PathBuf,
     pub card_cache_path: PathBuf,
+    pub assets_dir: PathBuf,
     pub mtga_data_dir: PathBuf,
     pub bind_override: Option<String>,
 }
@@ -56,12 +57,14 @@ impl Config {
 
         let db_path = db_override.map(PathBuf::from).unwrap_or_else(|| data_dir.join("tracker.sqlite"));
         let card_cache_path = cache_dir.join("scryfall-arena.json");
+        let assets_dir = cache_dir.join("assets");
         let mtga_data_dir = base.home_dir().join(DEFAULT_DATA_RELATIVE);
 
         Ok(Self {
             log_path,
             db_path,
             card_cache_path,
+            assets_dir,
             mtga_data_dir,
             bind_override: None,
         })

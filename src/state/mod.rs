@@ -61,6 +61,10 @@ pub struct AppState {
     pub updates: broadcast::Sender<LiveUpdate>,
     /// Lookup: deck_id → (name, mainboard map of arena_id→qty)
     pub deck_index: RwLock<HashMap<String, DeckSummary>>,
+    /// Filesystem cache for /cdn/* assets (mana SVGs + card images). Populated
+    /// by `scripts/download_assets.py`; the /cdn route falls back to Scryfall
+    /// when a file isn't present, so this can be empty without breaking the UI.
+    pub assets_dir: std::path::PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,6 +82,7 @@ impl AppState {
         cards: Arc<CardDb>,
         loc: Arc<LocDb>,
         updates: broadcast::Sender<LiveUpdate>,
+        assets_dir: std::path::PathBuf,
     ) -> Self {
         Self {
             pool,
@@ -86,6 +91,7 @@ impl AppState {
             current: RwLock::new(None),
             updates,
             deck_index: RwLock::new(HashMap::new()),
+            assets_dir,
         }
     }
 

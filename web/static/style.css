@@ -366,21 +366,91 @@ button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
   max-height: 120px;
 }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin-top: 12px; }
 .card-tile {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 8px;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
+  cursor: zoom-in;
+  transition: border-color 0.1s, background 0.1s;
 }
-.card-tile img { width: 40px; border-radius: 3px; }
+.card-tile:hover { border-color: var(--accent); background: #232b39; }
+.card-tile img { width: 56px; border-radius: 3px; }
 .card-tile .info { flex: 1; min-width: 0; }
 .card-tile .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .card-tile .meta { color: var(--muted); font-size: 11px; }
 .card-tile .qty { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Filter bar (Collection tab) */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+.filter-group { display: flex; align-items: center; gap: 4px; }
+.filter-label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
+}
+.filter-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.filter-chip:hover { border-color: var(--accent); }
+.filter-chip.active { background: var(--accent); color: #1a1208; border-color: var(--accent); }
+.filter-chip .mana { width: 14px; height: 14px; }
+.filter-chip.rarity-common.active { background: #d6dde6; }
+.filter-chip.rarity-uncommon.active { background: #b3c5d3; }
+.filter-chip.rarity-rare.active { background: #d4a85a; }
+.filter-chip.rarity-mythic.active { background: #d97a3c; }
+.filter-clear {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  margin-left: auto;
+}
+.filter-clear:hover { color: var(--text); border-color: var(--accent); }
+
+/* Hover-preview popover */
+#card-preview {
+  position: fixed;
+  width: 280px;
+  pointer-events: none;
+  z-index: 1000;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
+}
+#card-preview img {
+  width: 100%;
+  border-radius: 12px;
+  display: block;
+}
 
 input[type="search"] {
   background: var(--panel);

@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
     };
 
     // Lines → typed events → state engine + broadcaster
-    let state = Arc::new(state::AppState::new(pool.clone(), card_db.clone(), loc_db.clone(), event_tx.clone()));
+    let state = Arc::new(state::AppState::new(pool.clone(), card_db.clone(), loc_db.clone(), event_tx.clone(), config.assets_dir.clone()));
     let parser_handle = {
         let state = state.clone();
         tokio::spawn(async move {

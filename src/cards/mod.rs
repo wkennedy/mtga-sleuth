@@ -76,6 +76,23 @@ impl CardDb {
     }
 }
 
+/// `https://cards.scryfall.io/small/front/0/0/UUID.jpg?ts` →
+/// `/cdn/cards/small/UUID.jpg`. Returns the original URL unchanged if it
+/// doesn't match the expected Scryfall pattern.
+pub fn rewrite_image_url(url: &str) -> String {
+    if let Some(rest) = url.strip_prefix("https://cards.scryfall.io/") {
+        let path = rest.split('?').next().unwrap_or(rest);
+        // path = "small/front/X/Y/UUID.jpg"
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() >= 5 && parts[1] == "front" {
+            let size = parts[0];
+            let file = parts[parts.len() - 1];
+            return format!("/cdn/cards/{size}/{file}");
+        }
+    }
+    url.to_string()
+}
+
 fn is_stale(path: &Path) -> Result<bool> {
     let meta = std::fs::metadata(path)?;
     let modified = meta.modified()?;

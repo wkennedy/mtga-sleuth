@@ -11,6 +11,7 @@ use tower_http::trace::TraceLayer;
 use crate::state::AppState;
 
 pub mod api;
+mod cdn;
 pub mod import;
 mod sse;
 pub mod wildcards;
@@ -36,6 +37,7 @@ pub async fn serve(bind: String, state: Arc<AppState>) -> Result<()> {
         .route("/api/cards/{id}", get(api::get_card))
         .route("/api/events", get(api::recent_events))
         .route("/api/sse", get(sse::stream))
+        .route("/cdn/{*path}", get(cdn::serve))
         .route("/", get(serve_index))
         .fallback(static_handler)
         .with_state(state)

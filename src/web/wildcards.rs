@@ -13,6 +13,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
+use crate::cards::rewrite_image_url;
 use crate::state::AppState;
 use crate::web::api::{ApiError, DeckCardEntry};
 
@@ -123,7 +124,7 @@ fn hydrate(
                 cmc: card.and_then(|c| c.cmc),
                 rarity: card.and_then(|c| c.rarity.clone()),
                 type_line: card.and_then(|c| c.type_line.clone()),
-                image_small: card.and_then(|c| c.image_small.clone()),
+                image_small: card.and_then(|c| c.image_small.as_deref().map(rewrite_image_url)),
                 owned: row_owned,
                 missing: row_missing,
             }

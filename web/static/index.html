@@ -107,7 +107,40 @@
     </details>
 
     <input id="coll-filter" placeholder="Filter by name…" type="search">
+
+    <div class="filter-bar">
+      <div class="filter-group" data-group="color">
+        <span class="filter-label">Color</span>
+        <button class="filter-chip" data-value="W"><img class="mana" src="/cdn/symbols/W.svg" alt="W"></button>
+        <button class="filter-chip" data-value="U"><img class="mana" src="/cdn/symbols/U.svg" alt="U"></button>
+        <button class="filter-chip" data-value="B"><img class="mana" src="/cdn/symbols/B.svg" alt="B"></button>
+        <button class="filter-chip" data-value="R"><img class="mana" src="/cdn/symbols/R.svg" alt="R"></button>
+        <button class="filter-chip" data-value="G"><img class="mana" src="/cdn/symbols/G.svg" alt="G"></button>
+        <button class="filter-chip" data-value="C"><img class="mana" src="/cdn/symbols/C.svg" alt="C">less</button>
+        <button class="filter-chip" data-value="M">Multi</button>
+      </div>
+      <div class="filter-group" data-group="rarity">
+        <span class="filter-label">Rarity</span>
+        <button class="filter-chip rarity-common" data-value="common">Common</button>
+        <button class="filter-chip rarity-uncommon" data-value="uncommon">Uncommon</button>
+        <button class="filter-chip rarity-rare" data-value="rare">Rare</button>
+        <button class="filter-chip rarity-mythic" data-value="mythic">Mythic</button>
+      </div>
+      <div class="filter-group" data-group="type">
+        <span class="filter-label">Type</span>
+        <button class="filter-chip" data-value="creature">Creature</button>
+        <button class="filter-chip" data-value="instant">Instant</button>
+        <button class="filter-chip" data-value="sorcery">Sorcery</button>
+        <button class="filter-chip" data-value="artifact">Artifact</button>
+        <button class="filter-chip" data-value="enchantment">Enchant</button>
+        <button class="filter-chip" data-value="planeswalker">PW</button>
+        <button class="filter-chip" data-value="land">Land</button>
+      </div>
+      <button id="filter-clear" class="filter-clear">Clear</button>
+    </div>
+
     <div id="collection-grid" class="grid"></div>
+    <div id="card-preview" hidden><img alt=""></div>
   </section>
 
   <section id="tab-drafts" class="panel" hidden>

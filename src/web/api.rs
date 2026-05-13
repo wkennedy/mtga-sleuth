@@ -7,7 +7,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::cards::Card;
+use crate::cards::{rewrite_image_url, Card};
 use crate::state::{AppState, LiveMatch};
 use crate::web::wildcards;
 
@@ -245,7 +245,12 @@ pub struct CollectionEntry {
     pub name: String,
     pub set: Option<String>,
     pub rarity: Option<String>,
+    pub colors: Option<Vec<String>>,
+    pub type_line: Option<String>,
+    pub mana_cost: Option<String>,
+    pub cmc: Option<f32>,
     pub image_small: Option<String>,
+    pub image_normal: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -289,7 +294,12 @@ pub async fn collection(State(state): State<Arc<AppState>>) -> Result<Json<Vec<C
                     name: c.map(|c| c.name.clone()).unwrap_or_else(|| format!("Card #{card_id}")),
                     set: c.and_then(|c| c.set.clone()),
                     rarity: c.and_then(|c| c.rarity.clone()),
-                    image_small: c.and_then(|c| c.image_small.clone()),
+                    colors: c.and_then(|c| c.colors.clone()),
+                    type_line: c.and_then(|c| c.type_line.clone()),
+                    mana_cost: c.and_then(|c| c.mana_cost.clone()),
+                    cmc: c.and_then(|c| c.cmc),
+                    image_small: c.and_then(|c| c.image_small.as_deref().map(rewrite_image_url)),
+                    image_normal: c.and_then(|c| c.image_normal.as_deref().map(rewrite_image_url)),
                 }
             })
             .collect(),
@@ -370,7 +380,7 @@ fn card_to_entry(state: &AppState, arena_id: u32, qty: u32) -> DeckCardEntry {
         cmc: c.and_then(|c| c.cmc),
         rarity: c.and_then(|c| c.rarity.clone()),
         type_line: c.and_then(|c| c.type_line.clone()),
-        image_small: c.and_then(|c| c.image_small.clone()),
+        image_small: c.and_then(|c| c.image_small.as_deref().map(rewrite_image_url)),
         owned: 0,
         missing: 0,
     }
@@ -380,7 +390,10 @@ pub async fn get_card(
     State(state): State<Arc<AppState>>,
     Path(id): Path<u32>,
 ) -> Result<Json<Card>, ApiError> {
-    state.cards.get(id).cloned().map(Json).ok_or(ApiError::NotFound)
+    let mut card = state.cards.get(id).cloned().ok_or(ApiError::NotFound)?;
+    card.image_small = card.image_small.as_deref().map(rewrite_image_url);
+    card.image_normal = card.image_normal.as_deref().map(rewrite_image_url);
+    Ok(Json(card))
 }
 
 #[derive(Deserialize)]

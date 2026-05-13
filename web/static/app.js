@@ -263,7 +263,7 @@ function renderDeckCharts(mainboard) {
     const pct = totalPips ? (v / totalPips) * 100 : 0;
     const sym = col === "C" ? "C" : col;
     return `<div class="pip-row">
-      <img class="mana" src="https://svgs.scryfall.io/card-symbols/${sym}.svg" alt="{${sym}}">
+      <img class="mana" src="/cdn/symbols/${sym}.svg" alt="{${sym}}">
       <div class="pip-bar"><div class="pip-fill" style="width:${pct}%; background:${PIP_COLORS[col]}"></div></div>
       <div class="pip-val">${v.toFixed(v % 1 ? 1 : 0)}</div>
     </div>`;
@@ -288,7 +288,7 @@ function renderManaCost(text) {
   return String(text).replace(/\{([^}]+)\}/g, (_, sym) => {
     const slug = sym.replace(/\//g, "");
     const safe = encodeURIComponent(slug);
-    return `<img class="mana" src="https://svgs.scryfall.io/card-symbols/${safe}.svg" alt="{${escapeHtml(sym)}}" title="{${escapeHtml(sym)}}" loading="lazy">`;
+    return `<img class="mana" src="/cdn/symbols/${safe}.svg" alt="{${escapeHtml(sym)}}" title="{${escapeHtml(sym)}}" loading="lazy">`;
   });
 }
 
@@ -366,11 +366,77 @@ async function deriveFromDecks() {
     name: c.name,
     set: null,
     rarity: c.rarity,
+    type_line: c.type_line,
+    mana_cost: c.mana_cost,
+    cmc: c.cmc,
+    colors: colorsFromManaCost(c.mana_cost),
     image_small: c.image_small,
+    image_normal: null,
   }));
 }
 
-$("#coll-filter").addEventListener("input", (e) => renderCollection(e.target.value.trim().toLowerCase()));
+// Derive Scryfall-style colors from a mana cost like "{2}{W/B}{R}". Returns
+// the unique set of WUBRG symbols present (ignoring generic, X, hybrid-with-2,
+// and phyrexian costs that don't carry a color identity for filter purposes).
+function colorsFromManaCost(cost) {
+  if (!cost) return [];
+  const found = new Set();
+  for (const m of cost.matchAll(/\{([^}]+)\}/g)) {
+    for (const part of m[1].split("/")) {
+      if (/^[WUBRG]$/.test(part)) found.add(part);
+    }
+  }
+  return [...found];
+}
+
+// Collection filter state: { name: "", color: Set, rarity: Set, type: Set }.
+// Empty sets mean "no filter in this group"; otherwise it's union-within-group,
+// AND-across-groups.
+const collFilters = { name: "", color: new Set(), rarity: new Set(), type: new Set() };
+
+$("#coll-filter").addEventListener("input", (e) => {
+  collFilters.name = e.target.value.trim().toLowerCase();
+  renderCollection();
+});
+
+$$(".filter-bar .filter-chip").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const group = btn.parentElement.dataset.group;
+    const value = btn.dataset.value;
+    const set = collFilters[group];
+    if (set.has(value)) { set.delete(value); btn.classList.remove("active"); }
+    else { set.add(value); btn.classList.add("active"); }
+    renderCollection();
+  });
+});
+
+$("#filter-clear").addEventListener("click", () => {
+  collFilters.color.clear();
+  collFilters.rarity.clear();
+  collFilters.type.clear();
+  collFilters.name = "";
+  $("#coll-filter").value = "";
+  $$(".filter-bar .filter-chip.active").forEach((b) => b.classList.remove("active"));
+  renderCollection();
+});
+
+function matchesColorFilter(card, selected) {
+  if (selected.size === 0) return true;
+  const colors = card.colors || [];
+  for (const c of selected) {
+    if (c === "M") { if (colors.length > 1) return true; continue; }
+    if (c === "C") { if (colors.length === 0) return true; continue; }
+    if (colors.includes(c)) return true;
+  }
+  return false;
+}
+
+function matchesTypeFilter(card, selected) {
+  if (selected.size === 0) return true;
+  const t = (card.type_line || "").toLowerCase();
+  for (const v of selected) if (t.includes(v)) return true;
+  return false;
+}
 
 $("#import-btn").addEventListener("click", async () => {
   const text = $("#import-text").value;
@@ -399,17 +465,25 @@ $("#import-btn").addEventListener("click", async () => {
   }
 });
 
-function renderCollection(filter) {
+function renderCollection() {
   const grid = $("#collection-grid");
   grid.innerHTML = "";
   if (collectionCache.length === 0) {
     grid.innerHTML = '<p class="muted">No deck-derived cards yet — visit the Decks screen in MTGA so it sends your deck list.</p>';
     return;
   }
+  let shown = 0;
   for (const c of collectionCache) {
-    if (filter && !c.name.toLowerCase().includes(filter)) continue;
+    if (collFilters.name && !c.name.toLowerCase().includes(collFilters.name)) continue;
+    if (!matchesColorFilter(c, collFilters.color)) continue;
+    if (collFilters.rarity.size > 0 && !collFilters.rarity.has(c.rarity)) continue;
+    if (!matchesTypeFilter(c, collFilters.type)) continue;
     const tile = document.createElement("div");
     tile.className = "card-tile";
+    // Scryfall serves the same image at /small/, /normal/, /large/ — swap the
+    // path segment to grab 672×936 for the popover instead of the 488×680 normal.
+    const previewUrl = (c.image_normal || c.image_small || "").replace("/normal/", "/large/");
+    tile.dataset.preview = previewUrl;
     tile.innerHTML = `
       ${c.image_small ? `<img src="${c.image_small}" alt="" loading="lazy">` : ""}
       <div class="info">
@@ -419,8 +493,63 @@ function renderCollection(filter) {
       <div class="qty">×${c.quantity}</div>
     `;
     grid.appendChild(tile);
+    shown++;
+  }
+  if (shown === 0) {
+    grid.innerHTML = '<p class="muted">No cards match the current filters.</p>';
   }
 }
+
+// ---- Hover preview (collection grid) ----
+//
+// One singleton popover anchored next to the cursor. Tracking mousemove keeps
+// it pinned next to whatever the user is reading rather than fixed in a corner.
+(function attachCardPreview() {
+  const preview = $("#card-preview");
+  const img = preview.querySelector("img");
+  const grid = $("#collection-grid");
+  let currentSrc = null;
+
+  function show(url, ev) {
+    if (url !== currentSrc) {
+      img.src = url;
+      currentSrc = url;
+    }
+    preview.hidden = false;
+    position(ev);
+  }
+  function hide() {
+    preview.hidden = true;
+    currentSrc = null;
+  }
+  function position(ev) {
+    // Place to the right of the cursor; flip left if it would overflow the viewport.
+    const pad = 16;
+    const w = 280; // matches CSS width
+    const h = 390;
+    let x = ev.clientX + pad;
+    let y = ev.clientY + pad;
+    if (x + w > window.innerWidth) x = ev.clientX - w - pad;
+    if (y + h > window.innerHeight) y = window.innerHeight - h - pad;
+    if (y < pad) y = pad;
+    preview.style.left = x + "px";
+    preview.style.top = y + "px";
+  }
+
+  grid.addEventListener("mouseover", (e) => {
+    const tile = e.target.closest(".card-tile");
+    if (!tile || !tile.dataset.preview) return;
+    show(tile.dataset.preview, e);
+  });
+  grid.addEventListener("mousemove", (e) => {
+    if (preview.hidden) return;
+    position(e);
+  });
+  grid.addEventListener("mouseleave", hide);
+  grid.addEventListener("mouseout", (e) => {
+    if (!e.relatedTarget || !e.relatedTarget.closest(".card-tile")) hide();
+  });
+})();
 
 // ---- Drafts tab ----
 async function loadDrafts() {
