@@ -51,35 +51,95 @@ cargo run --release
 
 Then open http://127.0.0.1:7843 in your browser.
 
-The first run downloads Scryfall's bulk card data (~150 MB) and filters it
-down to Arena-only cards. Subsequent launches use the cached subset (refreshed
-weekly).
+The first run downloads Scryfall's bulk card data (~150 MB on the wire,
+filtered to a ~8 MB on-disk JSON). Subsequent launches use the cached subset
+(refreshed weekly).
+
+### Pre-built binary (recommended for non-Rust users)
+
+Grab the latest static `mtga-tracker` binary from
+[Releases](../../releases) — no Rust toolchain or runtime deps required, works
+on any glibc / musl Linux. Just `chmod +x` and run.
+
+Release binaries embed an Arena card snapshot, so first launch works
+immediately even before Scryfall has been contacted.
+
+### Build with bundled cards (for distributors)
+
+```bash
+cargo build --release --features bundled-cards
+```
+
+This makes `build.rs` fetch Scryfall's bulk data at compile time and embed a
+filtered Arena-only snapshot into the binary. Useful when shipping releases —
+end users get card names and images without an extra ~8 MB download on first
+launch.
 
 ### Configuration
 
 All settings can be passed as flags or environment variables:
 
-| Flag             | Env var          | Default                             |
-| ---------------- | ---------------- | ----------------------------------- |
-| `--log-path`     | `MTGA_LOG_PATH`  | Auto-detected Snap-Steam path       |
-| `--bind`         | `MTGA_BIND`      | `127.0.0.1:7843`                    |
-| `--db-path`      | `MTGA_DB_PATH`   | `~/.local/share/mtga-tracker/tracker.sqlite` |
-| `--no-card-db`   | —                | Skip Scryfall download (names only) |
+| Flag             | Env var          | Default                                          |
+| ---------------- | ---------------- | ------------------------------------------------ |
+| `--log-path`     | `MTGA_LOG_PATH`  | Auto-detected from common Steam install paths    |
+| `--data-dir`     | `MTGA_DATA_DIR`  | Auto-detected MTGA install (for localization)    |
+| `--bind`         | `MTGA_BIND`      | `127.0.0.1:7843`                                 |
+| `--db-path`      | `MTGA_DB_PATH`   | `~/.local/share/mtga-tracker/tracker.sqlite`     |
+| `--no-card-db`   | —                | Skip Scryfall download (names only)              |
 
 Increase log verbosity with `RUST_LOG=mtga_tracker=debug`.
 
-### Default log paths checked
+### Running with a non-Steam Wine prefix (Lutris / Bottles / standalone Wine)
 
-When `--log-path` is not set, the tracker tries these in order:
+Auto-detection only knows about Steam Proton's standard layouts. If you run
+MTGA via Lutris, Bottles, or a custom Wine prefix, point the tracker at
+`Player.log` (and the install dir, for localization) directly:
 
-1. `~/snap/steam/common/.local/share/Steam/steamapps/compatdata/2141910/...` (Snap Steam, primary)
-2. `~/.steam/steam/steamapps/compatdata/2141910/...`
-3. `~/.local/share/Steam/steamapps/compatdata/2141910/...`
-4. `~/.var/app/com.valvesoftware.Steam/data/Steam/steamapps/compatdata/2141910/...` (Flatpak)
+```bash
+# Lutris (default magic-the-gathering-arena install):
+mtga-tracker \
+  --log-path "$HOME/Games/magic-the-gathering-arena/drive_c/users/$USER/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log" \
+  --data-dir "$HOME/Games/magic-the-gathering-arena/drive_c/Program Files/Wizards of the Coast/MTGA/MTGA_Data/Downloads/Raw"
 
-The full file is `…/pfx/drive_c/users/steamuser/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log`.
+# Bottles (substitute your bottle name):
+mtga-tracker \
+  --log-path "$HOME/.var/app/com.usebottles.bottles/data/bottles/bottles/MTGA/drive_c/users/$USER/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log"
+```
 
-If you use Lutris, Bottles, or a custom Wine prefix, pass `--log-path` directly.
+Without `--data-dir` the tracker still works, but deck-name strings using
+MTGA's `?=?Loc/...` localization keys won't be translated to English.
+
+### Offline assets
+
+To run fully offline (no Scryfall round trips for card images or mana symbols):
+
+```bash
+scripts/download_assets.py            # symbols + small + normal images (~2.7 GB)
+scripts/download_assets.py --sizes small   # just thumbnails (~640 MB)
+scripts/download_assets.py --symbols-only  # mana SVGs only (~150 KB)
+```
+
+Files are stored under `~/.cache/mtga-tracker/assets/`. The tracker's
+`/cdn/{*}` route serves from this directory when files are present and
+falls back to Scryfall otherwise — the UI works the same either way.
+
+### Default paths checked
+
+When `--log-path` / `--data-dir` are not set, the tracker tries these Steam
+roots in order, then suffixes the per-feature path under each:
+
+1. `~/snap/steam/common/.local/share/Steam/...` (Snap Steam, primary)
+2. `~/.steam/steam/...`
+3. `~/.local/share/Steam/...`
+4. `~/.var/app/com.valvesoftware.Steam/data/Steam/...` (Flatpak)
+
+| Feature        | Suffix appended under each Steam root                                                      |
+| -------------- | ------------------------------------------------------------------------------------------ |
+| `Player.log`   | `steamapps/compatdata/2141910/pfx/drive_c/users/steamuser/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log` |
+| MTGA data dir  | `steamapps/common/MTGA/MTGA_Data/Downloads/Raw`                                            |
+
+For non-Steam Wine prefixes (Lutris, Bottles, manual prefix) see the section
+above for explicit `--log-path` / `--data-dir` examples.
 
 ## Architecture
 

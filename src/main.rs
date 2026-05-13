@@ -31,6 +31,13 @@ struct Cli {
     #[arg(long, env = "MTGA_DB_PATH")]
     db_path: Option<String>,
 
+    /// Override MTGA install dir (the one containing
+    /// MTGA_Data/Downloads/Raw/Raw_ClientLocalization_*.mtga). Used for
+    /// localization. Auto-detected for Steam (Snap, regular, Flatpak) and
+    /// the Lutris default; pass this for other Wine prefixes (e.g. Bottles).
+    #[arg(long, env = "MTGA_DATA_DIR")]
+    data_dir: Option<String>,
+
     /// Skip downloading the Scryfall card bulk on startup if missing.
     #[arg(long)]
     no_card_db: bool,
@@ -43,7 +50,7 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let config = Config::resolve(cli.log_path, cli.db_path)?;
+    let config = Config::resolve(cli.log_path, cli.db_path, cli.data_dir)?;
     tracing::info!(?config, "resolved configuration");
 
     let pool = db::init(&config.db_path).await?;

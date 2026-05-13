@@ -4,6 +4,16 @@ version = "0.1.0"
 edition = "2021"
 description = "Local MTG Arena tracker for Linux: live deck tracker, match history, draft helper, collection viewer"
 license = "MIT"
+build = "build.rs"
+
+[features]
+default = []
+# Bundle a snapshot of Scryfall's filtered Arena card data into the binary at
+# build time. Used by release builds so freshly-installed users have card names
+# and images on first launch without an extra ~8 MB download. The build script
+# fetches the data from Scryfall during compilation, so an internet connection
+# is required when building with this feature.
+bundled-cards = []
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -35,6 +45,9 @@ rust-embed = { version = "8", features = ["mime-guess"] }
 mime_guess = "2"
 
 once_cell = "1"
+
+[build-dependencies]
+serde_json = "1"
 
 [profile.release]
 opt-level = 3

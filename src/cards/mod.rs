@@ -58,6 +58,27 @@ impl CardDb {
             tracing::info!(path = %cache_path.display(), "loading cached card db");
             return load_from_cache(cache_path).await;
         }
+        // No on-disk cache yet. If we have a bundled snapshot baked into the
+        // binary (`bundled-cards` feature), materialize it so the user has
+        // working card data immediately. The next stale-check (7d) will go
+        // refresh it from Scryfall in the background.
+        if !cache_path.exists() {
+            if let Some(bytes) = bundled_cards() {
+                tracing::info!(
+                    path = %cache_path.display(),
+                    bytes = bytes.len(),
+                    "no on-disk card cache; materializing bundled snapshot",
+                );
+                if let Some(parent) = cache_path.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                if let Err(e) = tokio::fs::write(cache_path, bytes).await {
+                    tracing::warn!(error = %e, "failed to write bundled cache to disk; loading from memory");
+                    return Ok(build_db(serde_json::from_slice(bytes).context("decoding bundled card db")?));
+                }
+                return load_from_cache(cache_path).await;
+            }
+        }
         if skip_fetch {
             tracing::warn!("--no-card-db set; skipping Scryfall download. Card names will be missing.");
             return Ok(Self::empty());
@@ -73,6 +94,22 @@ impl CardDb {
                 Ok(Self::empty())
             }
         }
+    }
+}
+
+/// Returns the embedded card snapshot when built with `--features bundled-cards`,
+/// else None. The bundle is produced by `build.rs` at compile time.
+fn bundled_cards() -> Option<&'static [u8]> {
+    #[cfg(feature = "bundled-cards")]
+    {
+        const BUNDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/cards-bundle.json"));
+        // Empty JSON array means the build script ran with the feature disabled
+        // (defensive — shouldn't happen here because the cfg gates it).
+        if BUNDLE == b"[]" { None } else { Some(BUNDLE) }
+    }
+    #[cfg(not(feature = "bundled-cards"))]
+    {
+        None
     }
 }
 

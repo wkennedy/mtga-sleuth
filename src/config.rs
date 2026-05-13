@@ -19,6 +19,20 @@ fn fallback_log_paths(home: &Path) -> Vec<PathBuf> {
     ]
 }
 
+/// Same set of Steam roots as `fallback_log_paths`, but pointing at the MTGA
+/// install dir that holds `Raw_ClientLocalization_*.mtga`. Used by the loc DB
+/// loader; without a hit, deck-name keys like `?=?Loc/...` stay un-translated.
+fn fallback_data_paths(home: &Path) -> Vec<PathBuf> {
+    let suffix = "steamapps/common/MTGA/MTGA_Data/Downloads/Raw";
+    vec![
+        home.join(format!(".steam/steam/{suffix}")),
+        home.join(format!(".local/share/Steam/{suffix}")),
+        home.join(format!(".var/app/com.valvesoftware.Steam/data/Steam/{suffix}")),
+        // Lutris default for non-Steam Wine prefixes pointing at MTGA installs.
+        home.join("Games/magic-the-gathering-arena/drive_c/Program Files/Wizards of the Coast/MTGA/MTGA_Data/Downloads/Raw"),
+    ]
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub log_path: PathBuf,
@@ -30,7 +44,11 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn resolve(log_override: Option<String>, db_override: Option<String>) -> Result<Self> {
+    pub fn resolve(
+        log_override: Option<String>,
+        db_override: Option<String>,
+        data_dir_override: Option<String>,
+    ) -> Result<Self> {
         let base = BaseDirs::new().context("could not determine HOME directory")?;
         let project = ProjectDirs::from("dev", "mtga-tracker", "mtga-tracker")
             .context("could not determine XDG project dirs")?;
@@ -58,7 +76,21 @@ impl Config {
         let db_path = db_override.map(PathBuf::from).unwrap_or_else(|| data_dir.join("tracker.sqlite"));
         let card_cache_path = cache_dir.join("scryfall-arena.json");
         let assets_dir = cache_dir.join("assets");
-        let mtga_data_dir = base.home_dir().join(DEFAULT_DATA_RELATIVE);
+
+        let mtga_data_dir = match data_dir_override {
+            Some(p) => PathBuf::from(p),
+            None => {
+                let primary = base.home_dir().join(DEFAULT_DATA_RELATIVE);
+                if primary.exists() {
+                    primary
+                } else {
+                    fallback_data_paths(base.home_dir())
+                        .into_iter()
+                        .find(|p| p.exists())
+                        .unwrap_or(primary)
+                }
+            }
+        };
 
         Ok(Self {
             log_path,

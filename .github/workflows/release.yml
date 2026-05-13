@@ -1,0 +1,94 @@
+name: Release
+
+# Triggers on tags like v0.1.0, v1.2.3-rc1, etc. Build a statically-linked
+# x86_64-musl binary with the Scryfall card snapshot embedded, attach it to
+# a GitHub Release. Distros / users grab the single artifact and run it.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag name to publish under (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write   # needed by softprops/action-gh-release to create the Release
+
+jobs:
+  build-linux-x86_64-musl:
+    name: Build x86_64-unknown-linux-musl
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install musl toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools curl
+
+      - name: Set up Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Cache cargo registry & target dir
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          # Card bundle is fetched fresh each build (Scryfall content moves);
+          # don't key on Cargo.lock alone or we'd serve stale cards forever.
+          key: ${{ runner.os }}-musl-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-musl-${{ hashFiles('Cargo.lock') }}-
+            ${{ runner.os }}-musl-
+
+      - name: Build (musl static, bundled cards)
+        run: |
+          cargo build \
+            --release \
+            --features bundled-cards \
+            --target x86_64-unknown-linux-musl
+        env:
+          # Tell libsqlite3-sys to use musl's C compiler for the bundled SQLite.
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          # Force rebuild of the embedded card snapshot on every release.
+          BUNDLED_CARDS_FORCE_REFRESH: "1"
+
+      - name: Strip binary
+        run: strip target/x86_64-unknown-linux-musl/release/mtga-tracker
+
+      - name: Sanity-check static linkage
+        # No NEEDED entries == fully static. If this prints anything, the build
+        # accidentally pulled in a dynamic dep and the release would fail on
+        # systems without it. Fail loudly here instead.
+        run: |
+          ! ldd target/x86_64-unknown-linux-musl/release/mtga-tracker 2>&1 | grep -E "=>"
+
+      - name: Package release tarball
+        run: |
+          set -eux
+          tag="${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}"
+          stage="mtga-tracker-${tag}-x86_64-linux-musl"
+          mkdir -p "$stage"
+          cp target/x86_64-unknown-linux-musl/release/mtga-tracker "$stage/"
+          cp README.md LICENSE* "$stage/" 2>/dev/null || true
+          cp -r scripts "$stage/scripts"
+          tar czf "${stage}.tar.gz" "$stage"
+          sha256sum "${stage}.tar.gz" > "${stage}.tar.gz.sha256"
+          ls -la "${stage}.tar.gz"*
+
+      - name: Upload release artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          fail_on_unmatched_files: true
+          files: |
+            mtga-tracker-*-x86_64-linux-musl.tar.gz
+            mtga-tracker-*-x86_64-linux-musl.tar.gz.sha256
+          generate_release_notes: true
+          draft: false
