@@ -1,5 +1,7 @@
 # mtga-sleuth
 
+[![Rust](https://github.com/wkennedy/mtga-sleuth/actions/workflows/rust.yml/badge.svg)](https://github.com/wkennedy/mtga-sleuth/actions/workflows/rust.yml)
+
 A local **Magic: the Gathering Arena** tracker for Linux. Watches MTGA's
 `Player.log`, parses game / deck / draft / collection events, and serves a
 local web UI you open in your browser.
