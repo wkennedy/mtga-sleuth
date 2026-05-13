@@ -59,12 +59,49 @@ filtered to a ~8 MB on-disk JSON). Subsequent launches use the cached subset
 
 ### Pre-built binary (recommended for non-Rust users)
 
-Grab the latest static `mtga-sleuth` binary from
-[Releases](../../releases) — no Rust toolchain or runtime deps required, works
-on any glibc / musl Linux. Just `chmod +x` and run.
+The [Releases](../../releases) page ships a single statically-linked
+`x86_64-linux-musl` binary — no Rust toolchain, no runtime deps, works on any
+glibc / musl Linux. Each release attaches:
 
-Release binaries embed an Arena card snapshot, so first launch works
-immediately even before Scryfall has been contacted.
+- `mtga-sleuth-<version>-x86_64-linux-musl.tar.gz` — the binary + helper scripts
+- `mtga-sleuth-<version>-x86_64-linux-musl.tar.gz.sha256` — checksum for verification
+
+Download, verify, extract, run:
+
+```bash
+# 1. Pick a version. Either browse the Releases page or grab the latest tag:
+VERSION=$(curl -fsSL https://api.github.com/repos/wkennedy/mtga-sleuth/releases/latest \
+  | grep -oP '"tag_name":\s*"\K[^"]+')
+ARCHIVE="mtga-sleuth-${VERSION}-x86_64-linux-musl.tar.gz"
+
+# 2. Download the tarball and its checksum.
+curl -fSLO "https://github.com/wkennedy/mtga-sleuth/releases/download/${VERSION}/${ARCHIVE}"
+curl -fSLO "https://github.com/wkennedy/mtga-sleuth/releases/download/${VERSION}/${ARCHIVE}.sha256"
+
+# 3. Verify the download wasn't tampered with or truncated.
+sha256sum -c "${ARCHIVE}.sha256"
+
+# 4. Extract. Creates a directory named after the archive.
+tar xzf "${ARCHIVE}"
+cd "mtga-sleuth-${VERSION}-x86_64-linux-musl"
+
+# 5. Run it. The binary is already executable; this is just a safety net.
+chmod +x mtga-sleuth
+./mtga-sleuth
+```
+
+Then open <http://127.0.0.1:7843>. Make sure **Detailed Logs (Plugin Support)**
+is enabled in MTGA first (see above) or the UI will be empty.
+
+To install system-wide, drop the binary somewhere on your `PATH`:
+
+```bash
+sudo install -m 0755 mtga-sleuth /usr/local/bin/
+mtga-sleuth   # now runnable from anywhere
+```
+
+Release binaries embed an Arena card snapshot, so the first launch works
+immediately without contacting Scryfall.
 
 ### Build with bundled cards (for distributors)
 
