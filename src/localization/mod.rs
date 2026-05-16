@@ -1,7 +1,7 @@
 //! MTGA's deck names (and many other UI strings) are stored as localization
 //! *keys* like `?=?Loc/Decks/Precon/Precon_EPPFDN_RG`. The actual human-readable
-//! name lives in `Raw_ClientLocalization_<hash>.mtga` — a SQLite database
-//! shipped with the game install — under the key with the `?=?Loc/` prefix
+//! name lives in `Raw_ClientLocalization_<hash>.mtga` — an SQLite database 
+//! shipped with the game installation — under the key with the `?=?Loc/` prefix
 //! stripped off (so the lookup key is `Decks/Precon/Precon_EPPFDN_RG`).
 //!
 //! This module loads the en-US column once at startup into a HashMap. Lookups

@@ -115,7 +115,7 @@ impl AppState {
 
         // Dispatch on event kind. Unknown kinds are fine; they're already saved.
         // MTGA's modern naming is CamelCase no dots (e.g. `DeckUpsertDeckV3`).
-        // We use prefix matching so new event variants get handled automatically.
+        // We use prefix matching, so new event variants get handled automatically.
         let kind = event.kind.as_str();
         match kind {
             // Deck-list events: legacy dotted (`Deck.GetDeckListsV3`) and modern

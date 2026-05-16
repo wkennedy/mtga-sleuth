@@ -9,8 +9,8 @@ build = "build.rs"
 [features]
 default = []
 # Bundle a snapshot of Scryfall's filtered Arena card data into the binary at
-# build time. Used by release builds so freshly-installed users have card names
-# and images on first launch without an extra ~8 MB download. The build script
+# build time. Used by release builds so freshly installed users have card names
+# and images on the first launch without an extra ~8 MB download. The build script
 # fetches the data from Scryfall during compilation, so an internet connection
 # is required when building with this feature.
 bundled-cards = []

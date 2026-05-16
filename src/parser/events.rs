@@ -15,7 +15,7 @@ pub enum Direction {
 ///
 /// `kind` is the MTGA-internal event name (e.g. `"Deck.GetDeckListsV3"`,
 /// `"MatchGameRoomStateChangedEvent"`, `"GreToClientEvent"`). `payload` is the
-/// raw JSON body. Higher layers do typed deserialization on demand.
+/// raw JSON body. Higher layers do type deserialization on demand.
 #[derive(Debug, Clone)]
 pub struct ParsedEvent {
     pub timestamp: DateTime<Utc>,

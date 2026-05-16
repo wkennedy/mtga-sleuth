@@ -10,11 +10,11 @@
 //!   cards/large/...jpg
 //! ```
 //!
-//! When a requested file exists locally we stream it back with a long
+//! When a requested file exists locally, we stream it back with a long
 //! `Cache-Control` (Scryfall content is content-addressed by UUID, so it's
-//! immutable). Otherwise we 302-redirect to the equivalent Scryfall URL —
-//! which means the UI works whether or not `scripts/download_assets.py` has
-//! ever been run, and partial cache states "just work."
+//! immutable). Otherwise, we 302-redirect to the equivalent Scryfall URL —
+//! which means the UI works whether `scripts/download_assets.py` has
+//! ever been run, and the partial cache states "just work."
 
 use std::sync::Arc;
 

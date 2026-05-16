@@ -1,6 +1,6 @@
 //! Scryfall-backed card metadata, keyed by MTGA's `arena_id` (a.k.a. `grpId`).
 //!
-//! On first launch we pull Scryfall's `default_cards` bulk file, filter it down
+//! On the first launch we pull Scryfall's `default_cards` bulk file, filter it down
 //! to entries with an `arena_id`, and persist the result. Subsequent launches
 //! load the cached subset directly. The cache is refreshed when older than
 //! [`STALE_AFTER`].
