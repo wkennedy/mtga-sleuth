@@ -37,7 +37,7 @@ fn upstream_url(path: &str) -> Option<String> {
     if let Some(rest) = path.strip_prefix("cards/") {
         // rest = "small/0000419b-...jpg"
         let (size, file) = rest.split_once('/')?;
-        if !matches!(size, "small" | "normal" | "large" | "png") {
+        if !matches!(size, "small" | "normal" | "large" | "png" | "art_crop") {
             return None;
         }
         let uuid_stem = file.split('.').next()?;
@@ -127,6 +127,14 @@ mod tests {
     fn upstream_rejects_unknown_prefix() {
         assert_eq!(upstream_url("nope/foo.jpg"), None);
         assert_eq!(upstream_url("cards/wat/foo.jpg"), None);
+    }
+
+    #[test]
+    fn upstream_for_art_crop() {
+        assert_eq!(
+            upstream_url("cards/art_crop/0000419b-0bba-4488-8f7a-6194544ce91e.jpg").as_deref(),
+            Some("https://cards.scryfall.io/art_crop/front/0/0/0000419b-0bba-4488-8f7a-6194544ce91e.jpg"),
+        );
     }
 
     #[test]

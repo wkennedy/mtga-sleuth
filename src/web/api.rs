@@ -24,29 +24,49 @@ pub struct DeckRow {
     pub deck_id: String,
     pub name: String,
     pub format: Option<String>,
+    pub origin: String,
     pub last_updated: String,
     pub wildcards_needed: wildcards::WildcardCost,
     pub total_missing: u32,
+    /// WUBRG-ordered color identity for the row's mana pips.
+    pub colors: Vec<String>,
+    /// Art-crop image URL for the deck tile (proxied through /cdn).
+    pub tile_art: Option<String>,
+}
+
+/// Resolve a deck's tile art to an art_crop /cdn URL. Prefers the tile card
+/// MTGA chose (`DeckTileId`), falling back to the deck's best-rarity card.
+fn resolve_tile_art(state: &AppState, tile_card_id: Option<i64>, fallback: Option<u32>) -> Option<String> {
+    [tile_card_id.map(|v| v as u32), fallback]
+        .into_iter()
+        .flatten()
+        .find_map(|id| {
+            let small = state.cards.get(id)?.image_small.as_deref()?;
+            Some(rewrite_image_url(small).replace("/small/", "/art_crop/"))
+        })
 }
 
 pub async fn list_decks(State(state): State<Arc<AppState>>) -> Result<Json<Vec<DeckRow>>, ApiError> {
-    let rows: Vec<(String, String, Option<String>, String)> = sqlx::query_as(
-        "SELECT deck_id, name, format, last_updated FROM decks ORDER BY last_updated DESC",
+    let rows: Vec<(String, String, Option<String>, String, String, Option<i64>)> = sqlx::query_as(
+        "SELECT deck_id, name, format, origin, last_updated, tile_card_id FROM decks ORDER BY last_updated DESC",
     )
     .fetch_all(&state.pool)
     .await?;
     let mut costs = wildcards::costs_for_all_decks(&state, &state.pool).await?;
     Ok(Json(
         rows.into_iter()
-            .map(|(deck_id, name, format, last_updated)| {
+            .map(|(deck_id, name, format, origin, last_updated, tile_card_id)| {
                 let cost = costs.remove(&deck_id).unwrap_or_default();
                 DeckRow {
                     name: state.loc.translate(&name).into_owned(),
                     deck_id,
                     format,
+                    origin,
                     last_updated,
                     wildcards_needed: cost.wildcards_needed,
                     total_missing: cost.total_missing,
+                    colors: cost.colors,
+                    tile_art: resolve_tile_art(&state, tile_card_id, cost.tile_fallback),
                 }
             })
             .collect(),
@@ -63,6 +83,7 @@ pub struct DeckDetail {
     pub wildcards_needed: wildcards::WildcardCost,
     pub unique_missing: u32,
     pub total_missing: u32,
+    pub tile_art: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -88,12 +109,12 @@ pub async fn get_deck(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeckDetail>, ApiError> {
-    let head: Option<(String, String, Option<String>)> =
-        sqlx::query_as("SELECT deck_id, name, format FROM decks WHERE deck_id = ?")
+    let head: Option<(String, String, Option<String>, Option<i64>)> =
+        sqlx::query_as("SELECT deck_id, name, format, tile_card_id FROM decks WHERE deck_id = ?")
             .bind(&id)
             .fetch_optional(&state.pool)
             .await?;
-    let (deck_id, name, format) = head.ok_or(ApiError::NotFound)?;
+    let (deck_id, name, format, tile_card_id) = head.ok_or(ApiError::NotFound)?;
     let name = state.loc.translate(&name).into_owned();
 
     let cards: Vec<(i64, i64, i64)> =
@@ -103,6 +124,23 @@ pub async fn get_deck(
             .await?;
 
     let analysis = wildcards::analyze(&state, &state.pool, cards).await?;
+    // Fallback tile: the deck's best-rarity mainboard card with an image.
+    let fallback = {
+        let rank = |r: Option<&str>| match r {
+            Some("mythic") => 4u8,
+            Some("rare") => 3,
+            Some("uncommon") => 2,
+            Some("common") => 1,
+            _ => 0,
+        };
+        analysis
+            .mainboard
+            .iter()
+            .filter(|c| c.image_small.is_some())
+            .max_by_key(|c| rank(c.rarity.as_deref()))
+            .map(|c| c.arena_id)
+    };
+    let tile_art = resolve_tile_art(&state, tile_card_id, fallback);
     Ok(Json(DeckDetail {
         deck_id,
         name,
@@ -112,6 +150,7 @@ pub async fn get_deck(
         wildcards_needed: analysis.cost,
         unique_missing: analysis.unique_missing,
         total_missing: analysis.total_missing,
+        tile_art,
     }))
 }
 

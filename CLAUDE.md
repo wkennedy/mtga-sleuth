@@ -56,22 +56,28 @@ Module layout (`src/`):
    - Match-flow markers are `Match to <playerId>:` and `<playerId> to Match:`
      — NOT the older `GRE to Client` / `Match to GRE` strings.
 
-3. **Per-card collection counts are NOT in detailed logs**. Confirmed:
+3. **`StartHook.Decks` mixes personal and precon decks** (verified 2026-08-13):
+   its `Decks` map contains the player's real decks (human-typed `Name`) AND
+   ~120 precon/reference decks (`Name` starts with `?=?Loc/Decks/Precon`,
+   empty `Attributes`). `decks::classify_origin` splits them into the
+   `decks.origin` column; keep that in mind when querying decks.
+
+4. **Per-card collection counts are NOT in detailed logs**. Confirmed:
    no `Inventory*` events emit a card-id→count map. We work around this with:
    - Incremental tracking from `BoosterOpen|Reward|Grant|...` events and
      `Changes`/`delta.cardsAdded` arrays (handler: `inventory_changes.rs`)
    - Paste-import via `POST /api/collection/import` accepting Arena format
    - Deck-derived lower-bound shown when collection is empty (frontend only)
 
-4. **Default install path** is Snap Steam at app id `2141910`. Other paths
+5. **Default install path** is Snap Steam at app id `2141910`. Other paths
    (Lutris, Bottles, Flatpak Steam) are auto-detected as fallbacks.
    Localization SQLite lives next to the game install at
    `MTGA_Data/Downloads/Raw/Raw_ClientLocalization_<hash>.mtga`.
 
-5. **Static assets are embedded at build time**. Editing `web/static/*`
+6. **Static assets are embedded at build time**. Editing `web/static/*`
    requires `cargo build` to take effect — there's no live-reload.
 
-6. **rust-embed in debug mode reads from disk dynamically; release embeds.**
+7. **rust-embed in debug mode reads from disk dynamically; release embeds.**
    So `cargo run` picks up frontend edits without rebuild; `cargo run --release`
    does not.
 
@@ -110,4 +116,7 @@ CLI flags / env (see `src/main.rs`):
   possible.
 - Don't read MTGA's name strings as truth — pass them through
   `state.loc.translate()` first (handles `?=?Loc/` localization keys).
-- Frontend has zero build deps. Don't introduce a bundler.
+- Frontend has zero build deps. Don't introduce a bundler. If a feature ever
+  genuinely needs componentized state, the sanctioned path is vendoring
+  Preact + htm as static files (still no build step) — never a compile step.
+  Fonts/images are vendored into `web/static/` too; no CDN requests at runtime.

@@ -29,6 +29,15 @@ pub struct WildcardCost {
 pub struct DeckCost {
     pub wildcards_needed: WildcardCost,
     pub total_missing: u32,
+    /// WUBRG-ordered color identity, unioned from the deck's cards.
+    #[serde(skip)]
+    pub colors: Vec<String>,
+    /// Highest-rarity card with an image — the art fallback when the deck has
+    /// no tile_card_id. (rarity rank, arena_id) internally, exposed as the id.
+    #[serde(skip)]
+    pub tile_fallback: Option<u32>,
+    #[serde(skip)]
+    fallback_rank: u8,
 }
 
 pub struct Analysis {
@@ -182,6 +191,29 @@ pub async fn costs_for_all_decks(
     for (deck_id, card_id, required, owned) in rows {
         let entry = out.entry(deck_id).or_default();
         let card = state.cards.get(card_id as u32);
+
+        if let Some(c) = card {
+            for col in c.colors.iter().flatten() {
+                if !entry.colors.contains(col) {
+                    entry.colors.push(col.clone());
+                }
+            }
+            let rank = match c.rarity.as_deref() {
+                Some("mythic") => 4,
+                Some("rare") => 3,
+                Some("uncommon") => 2,
+                Some("common") => 1,
+                _ => 0,
+            };
+            if c.image_small.is_some()
+                && rank > entry.fallback_rank
+                && !is_basic_land(c.type_line.as_deref())
+            {
+                entry.fallback_rank = rank;
+                entry.tile_fallback = Some(c.arena_id);
+            }
+        }
+
         if is_basic_land(card.and_then(|c| c.type_line.as_deref())) {
             continue;
         }
@@ -197,6 +229,11 @@ pub async fn costs_for_all_decks(
             Some("mythic") => entry.wildcards_needed.mythic += missing,
             _ => {}
         }
+    }
+    // WUBRG display order.
+    const ORDER: [&str; 5] = ["W", "U", "B", "R", "G"];
+    for cost in out.values_mut() {
+        cost.colors.sort_by_key(|c| ORDER.iter().position(|o| o == c).unwrap_or(5));
     }
     Ok(out)
 }

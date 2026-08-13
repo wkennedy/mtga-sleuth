@@ -36,11 +36,25 @@ pub async fn handle(state: &AppState, event: &ParsedEvent) -> Result<()> {
     }
     tracing::info!(kind = %event.kind, count = decks.len(), "ingesting decks");
     for deck in decks {
-        if let Err(e) = persist_deck(state, &deck).await {
+        if let Err(e) = persist_deck(state, &deck, &event.kind).await {
             tracing::warn!(error = %e, "failed to persist deck");
         }
     }
     Ok(())
+}
+
+/// Classify a deck as the player's own or a precon/reference deck.
+///
+/// The precon catalog event is all precons by definition. StartHook's `Decks`
+/// map mixes both: the player's decks have human-typed names, while precons
+/// carry unlocalized `?=?Loc/Decks/Precon/...` name keys (verified empirically
+/// 2026-08-13).
+fn classify_origin(event_kind: &str, name: &str) -> &'static str {
+    if event_kind.contains("Precon") || name.starts_with("?=?Loc/Decks/Precon") {
+        "precon"
+    } else {
+        "personal"
+    }
 }
 
 /// Find the array of deck-shaped objects inside any of the known wrappers.
@@ -68,7 +82,7 @@ fn extract_deck_array(payload: &Value) -> Vec<Value> {
     Vec::new()
 }
 
-async fn persist_deck(state: &AppState, deck: &Value) -> Result<()> {
+async fn persist_deck(state: &AppState, deck: &Value, event_kind: &str) -> Result<()> {
     // Try several locations for each field — modern (Summary.DeckId), legacy (id), and flat.
     let summary = deck.get("Summary");
     let deck_body = deck.get("Deck").unwrap_or(deck);
@@ -79,18 +93,30 @@ async fn persist_deck(state: &AppState, deck: &Value) -> Result<()> {
     };
     let name = pluck_str(deck, summary, &["Name", "name"]).unwrap_or_else(|| "Unnamed".into());
     let format = extract_format(deck, summary);
+    let origin = classify_origin(event_kind, &name);
+    let tile_card_id = pluck_u32(deck, summary, &["DeckTileId", "deckTileId", "DeckArtId", "deckArtId"]);
 
     let main = parse_card_list(deck_body.get("MainDeck").or_else(|| deck_body.get("mainDeck")));
     let side = parse_card_list(deck_body.get("Sideboard").or_else(|| deck_body.get("sideboard")));
 
     let mut tx = state.pool.begin().await?;
+    // `origin` upgrades to personal but never downgrades: starter precons the
+    // player has claimed appear plain-named in StartHook's deck list (=
+    // personal) AND under the same deck_id in the precon catalog event, and
+    // the catalog must not win regardless of event order. `tile_card_id`
+    // keeps its old value when an event doesn't carry one.
     sqlx::query(
-        "INSERT INTO decks (deck_id, name, format, last_updated) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(deck_id) DO UPDATE SET name = excluded.name, format = excluded.format, last_updated = CURRENT_TIMESTAMP",
+        "INSERT INTO decks (deck_id, name, format, origin, tile_card_id, last_updated) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(deck_id) DO UPDATE SET name = excluded.name, format = excluded.format,
+             origin = CASE WHEN decks.origin = 'personal' THEN 'personal' ELSE excluded.origin END,
+             tile_card_id = COALESCE(excluded.tile_card_id, decks.tile_card_id),
+             last_updated = CURRENT_TIMESTAMP",
     )
     .bind(&deck_id)
     .bind(&name)
     .bind(&format)
+    .bind(origin)
+    .bind(tile_card_id.map(|v| v as i64))
     .execute(&mut *tx)
     .await?;
 
@@ -133,6 +159,19 @@ fn pluck_str(root: &Value, summary: Option<&Value>, keys: &[&str]) -> Option<Str
         for k in keys {
             if let Some(s) = src.get(*k).and_then(|v| v.as_str()) {
                 return Some(s.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn pluck_u32(root: &Value, summary: Option<&Value>, keys: &[&str]) -> Option<u32> {
+    for src in [summary, Some(root)].iter().flatten() {
+        for k in keys {
+            if let Some(n) = src.get(*k).and_then(any_to_u32) {
+                if n > 0 {
+                    return Some(n);
+                }
             }
         }
     }
@@ -251,6 +290,17 @@ mod tests {
         ]});
         let fmt = extract_format(&Value::Null, Some(&summary));
         assert_eq!(fmt.as_deref(), Some("Brawl"));
+    }
+
+    #[test]
+    fn classifies_deck_origin() {
+        // Precon catalog event: everything is a precon regardless of name.
+        assert_eq!(classify_origin("DeckGetAllPreconDecksV3", "Aerial Domination"), "precon");
+        // StartHook mixes both; the loc-key name prefix identifies precons.
+        assert_eq!(classify_origin("StartHook.Decks", "?=?Loc/Decks/Precon/Precon_EPP_W_Name"), "precon");
+        assert_eq!(classify_origin("StartHook.Decks", "Simic Flash (Imp)"), "personal");
+        // Deck edits are always the player's.
+        assert_eq!(classify_origin("DeckUpsertDeckV3", "My Brew"), "personal");
     }
 
     #[test]

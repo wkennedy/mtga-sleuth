@@ -4,12 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MTGA Sleuth</title>
+<link rel="icon" type="image/png" href="/icon.png">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header>
+  <img class="logo" src="/icon.png" alt="">
   <h1>MTGA Sleuth</h1>
   <nav>
+    <span id="tab-indicator"></span>
     <button class="tab" data-tab="live">Live</button>
     <button class="tab" data-tab="decks">Decks</button>
     <button class="tab" data-tab="matches">Matches</button>
@@ -22,7 +25,10 @@
 
 <main>
   <section id="tab-live" class="panel">
-    <div id="live-empty" class="empty">No active match. Start a game in MTGA — events will appear here.</div>
+    <div id="live-empty" class="empty">
+      <img class="empty-art" src="/empty.png" alt="">
+      <div>No active match. Start a game in MTGA — events will appear here.</div>
+    </div>
     <div id="live-content" hidden>
       <div class="match-meta">
         <div><strong>Match</strong> <span id="m-id">—</span></div>
@@ -75,12 +81,16 @@
     <div class="split">
       <div class="deck-list-col">
         <div class="deck-list-controls">
-          <label for="deck-sort" class="muted">Sort</label>
-          <select id="deck-sort">
+          <select id="deck-filter" title="Which decks to show" aria-label="Which decks to show">
+            <option value="mine">My decks</option>
+            <option value="precon">Precons</option>
+            <option value="all">All</option>
+          </select>
+          <select id="deck-sort" title="Sort order" aria-label="Sort order">
             <option value="recent">Recently updated</option>
             <option value="buildable">Closest to buildable</option>
           </select>
-          <button id="new-deck-btn" title="Build a deck from scratch">+ New deck</button>
+          <button id="new-deck-btn" class="btn small" title="Build a deck from scratch">+ New deck</button>
         </div>
         <ul id="decks-list" class="list"></ul>
       </div>
@@ -156,16 +166,15 @@
         <button class="filter-chip" data-value="planeswalker">PW</button>
         <button class="filter-chip" data-value="land">Land</button>
       </div>
-      <button id="filter-clear" class="filter-clear">Clear</button>
+      <button id="filter-clear" class="btn small filter-clear">Clear</button>
     </div>
 
     <div id="collection-grid" class="grid"></div>
     <div id="collection-pager" class="pager" hidden>
-      <button id="pager-prev" class="pager-btn">‹ Prev</button>
+      <button id="pager-prev" class="btn">‹ Prev</button>
       <span id="pager-status" class="pager-status"></span>
-      <button id="pager-next" class="pager-btn">Next ›</button>
+      <button id="pager-next" class="btn">Next ›</button>
     </div>
-    <div id="card-preview" hidden><img alt=""></div>
   </section>
 
   <section id="tab-drafts" class="panel" hidden>
@@ -184,6 +193,8 @@
   </section>
 </main>
 
+<div id="card-preview" hidden><img alt=""></div>
+<div id="toast-host"></div>
 <script src="/app.js"></script>
 </body>
 </html>

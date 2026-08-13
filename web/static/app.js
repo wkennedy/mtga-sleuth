@@ -7,13 +7,28 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 let activeTab = "live";
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+function moveTabIndicator() {
+  const btn = $(`button[data-tab="${activeTab}"]`);
+  const ind = $("#tab-indicator");
+  if (!btn || !ind) return;
+  ind.style.left = btn.offsetLeft + "px";
+  ind.style.width = btn.offsetWidth + "px";
+}
 
 function showTab(name) {
   activeTab = name;
-  for (const t of tabs) {
-    $(`#tab-${t}`).hidden = t !== name;
-    $(`button[data-tab="${t}"]`).classList.toggle("active", t === name);
-  }
+  const apply = () => {
+    for (const t of tabs) {
+      $(`#tab-${t}`).hidden = t !== name;
+      $(`button[data-tab="${t}"]`).classList.toggle("active", t === name);
+    }
+    moveTabIndicator();
+  };
+  // Cross-fade tab swaps where the browser supports it.
+  if (document.startViewTransition && !reduceMotion.matches) document.startViewTransition(apply);
+  else apply();
   switch (name) {
     case "live": refreshLive(); break;
     case "decks": loadDecks(); break;
@@ -25,11 +40,27 @@ function showTab(name) {
 }
 
 $$(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+window.addEventListener("resize", debounce(moveTabIndicator, 100));
+// Reposition once the vendored font finishes loading (widths shift slightly).
+if (document.fonts?.ready) document.fonts.ready.then(moveTabIndicator);
 
 async function fetchJSON(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url} ${r.status}`);
   return r.json();
+}
+
+// ---- Toasts ----
+function toast(message, kind = "info", ms = 3500) {
+  const host = $("#toast-host");
+  const el = document.createElement("div");
+  el.className = `toast ${kind}`;
+  el.textContent = message;
+  host.appendChild(el);
+  setTimeout(() => {
+    el.classList.add("leaving");
+    el.addEventListener("animationend", () => el.remove(), { once: true });
+  }, ms);
 }
 
 // ---- Live tab ----
@@ -67,11 +98,22 @@ async function refreshLive() {
   }
 }
 
+// ---- Skeleton loading rows ----
+function skeletonRows(n = 6) {
+  return Array.from({ length: n }, () => `
+    <li class="skeleton-row">
+      <div class="skeleton sk-thumb"></div>
+      <div class="sk-lines"><div class="skeleton sk-line"></div><div class="skeleton sk-line short"></div></div>
+    </li>`).join("");
+}
+
 // ---- Decks tab ----
 let decksCache = [];
 let walletCache = null;
 
 async function loadDecks() {
+  // Skeleton only on first load — SSE-triggered refreshes swap in place.
+  if (decksCache.length === 0) $("#decks-list").innerHTML = skeletonRows();
   [decksCache, walletCache] = await Promise.all([
     fetchJSON("/api/decks").catch(() => []),
     fetchJSON("/api/wallet").catch(() => null),
@@ -113,6 +155,21 @@ function renderDeckBadge(d) {
   return `<span class="deck-badge short">short ${parts.join(" ")}</span>`;
 }
 
+// A deck's WUBRG identity as a CSS accent — solid for mono-color, gradient
+// for multi. Uses the pip palette so identity reads the same everywhere.
+function identityAccent(colors, dir = "180deg") {
+  const hex = (colors ?? []).map((c) => PIP_COLORS[c]).filter(Boolean);
+  if (hex.length === 0) return null;
+  if (hex.length === 1) return hex[0];
+  return `linear-gradient(${dir}, ${hex.join(", ")})`;
+}
+
+function deckColorsFromEntries(entries) {
+  const found = new Set();
+  for (const c of entries) for (const col of colorsFromManaCost(c.mana_cost)) found.add(col);
+  return ["W", "U", "B", "R", "G"].filter((c) => found.has(c));
+}
+
 function renderDeckList() {
   const ul = $("#decks-list");
   ul.innerHTML = "";
@@ -120,7 +177,17 @@ function renderDeckList() {
     ul.innerHTML = '<li class="muted">No decks yet.</li>';
     return;
   }
-  const rows = [...decksCache];
+  const which = $("#deck-filter").value;
+  let rows = decksCache.filter((d) =>
+    which === "all" ? true :
+    which === "precon" ? d.origin === "precon" :
+    d.origin !== "precon"); // "mine": game-synced personal + manual decks
+  if (rows.length === 0) {
+    ul.innerHTML = `<li class="muted">${which === "mine"
+      ? "No personal decks seen yet — launch MTGA so StartHook sends your deck list."
+      : "Nothing here."}</li>`;
+    return;
+  }
   if ($("#deck-sort").value === "buildable") {
     // Complete first, then closest to buildable; recency breaks ties.
     rows.sort((a, b) =>
@@ -131,13 +198,26 @@ function renderDeckList() {
   for (const d of rows) {
     const li = document.createElement("li");
     const manual = d.deck_id.startsWith("user-") ? '<span class="deck-tag">manual</span>' : "";
-    li.innerHTML = `${escapeHtml(d.name)}${manual}${renderDeckBadge(d)}<small>${d.format ?? "?"} · ${d.last_updated.slice(0, 10)}</small>`;
+    const thumb = d.tile_art
+      ? `<img class="deck-thumb" src="${d.tile_art}" alt="" loading="lazy">`
+      : '<div class="deck-thumb placeholder">🂠</div>';
+    const pips = d.colors?.length
+      ? `<span class="deck-row-pips">${d.colors.map((c) => `<img class="mana" src="/cdn/symbols/${c}.svg" alt="${c}">`).join("")}</span>`
+      : "";
+    li.innerHTML = `${thumb}<div class="deck-row-main">
+      <div class="deck-row-name">${escapeHtml(d.name)}${pips}${manual}${renderDeckBadge(d)}</div>
+      <small>${d.format ?? "?"} · ${d.last_updated.slice(0, 10)}</small>
+    </div>`;
+    const accent = identityAccent(d.colors);
+    if (accent) li.style.setProperty("--deck-accent", accent);
+    li.style.setProperty("--i", Math.min(ul.children.length, 10));
     li.addEventListener("click", () => loadDeckDetail(d.deck_id, li));
     ul.appendChild(li);
   }
 }
 
 $("#deck-sort").addEventListener("change", renderDeckList);
+$("#deck-filter").addEventListener("change", renderDeckList);
 $("#new-deck-btn").addEventListener("click", () => openEditor(null));
 
 async function loadDeckDetail(id, li) {
@@ -147,15 +227,24 @@ async function loadDeckDetail(id, li) {
   const det = $("#deck-detail");
   if (!d) { det.innerHTML = '<p class="muted">Failed to load.</p>'; return; }
   const editLabel = d.deck_id.startsWith("user-") ? "Edit" : "Edit a copy";
+  const identity = identityAccent(deckColorsFromEntries(d.mainboard), "90deg");
+  const banner = d.tile_art
+    ? `<div class="deck-banner"${identity ? ` style="--deck-accent:${identity}"` : ""}>
+        <img src="${d.tile_art}" alt="">
+        <div class="banner-overlay"></div>
+        <div class="banner-title"><h3>${escapeHtml(d.name)}</h3><span class="muted">${escapeHtml(d.format ?? "")}</span></div>
+      </div>`
+    : "";
   det.innerHTML = `
+    ${banner}
     <div class="deck-detail-head">
-      <h3>${escapeHtml(d.name)}</h3>
+      ${banner ? "<span></span>" : `<h3>${escapeHtml(d.name)}</h3>`}
       <span class="deck-detail-actions">
-        <button id="edit-deck-btn">${editLabel}</button>
-        <button id="export-deck-btn" title="Copy this deck as Arena-format text">Copy for Arena</button>
+        <button id="edit-deck-btn" class="btn small">${editLabel}</button>
+        <button id="export-deck-btn" class="btn small" title="Copy this deck as Arena-format text">Copy for Arena</button>
       </span>
     </div>
-    <p class="muted">${d.format ?? "Unknown format"}</p>
+    ${banner ? "" : `<p class="muted">${d.format ?? "Unknown format"}</p>`}
     ${renderDeckCharts(d.mainboard)}
     ${renderWildcardSummary(d)}
     ${renderLegality(d.mainboard, d.sideboard, d.format)}
@@ -181,6 +270,17 @@ async function loadDeckDetail(id, li) {
   });
 }
 
+// Upgrade any /cdn or Scryfall card image URL to the 672×936 "large" size,
+// whatever size segment it currently carries. Same UUID path serves all sizes.
+function largeImageUrl(url) {
+  return (url || "").replace(/\/(small|normal|art_crop|png)\//, "/large/");
+}
+
+function cardPreviewAttr(c) {
+  const src = largeImageUrl(c.image_normal || c.image_small);
+  return src ? ` data-preview="${src}"` : "";
+}
+
 function renderDeckCard(c, fmtKey = null) {
   const missingClass = c.missing > 0 ? " missing" : "";
   const ownedTxt = c.missing > 0
@@ -188,8 +288,9 @@ function renderDeckCard(c, fmtKey = null) {
     : `<span class="own good">${c.quantity}/${c.quantity}</span>`;
   const issue = cardLegalityIssue(c, fmtKey);
   const chip = issue ? `<span class="legal-chip">${escapeHtml(issue)}</span>` : "";
-  return `<div class="deck-card${missingClass}">
+  return `<div class="deck-card${missingClass}"${cardPreviewAttr(c)}>
     <span class="qty">${c.quantity}×</span>
+    <span class="rarity-dot ${c.rarity ?? ""}" title="${c.rarity ?? ""}"></span>
     <span class="name">${escapeHtml(c.name)}${chip}</span>
     ${ownedTxt}
     <span class="cost">${renderManaCost(c.mana_cost)}</span>
@@ -348,9 +449,9 @@ function openEditor(d) {
           <option value="Brawl">Standard Brawl</option>
           <option value="HistoricBrawl">Brawl (100)</option>
         </select>
-        <button id="editor-save" class="primary">Save</button>
-        <button id="editor-cancel">Cancel</button>
-        ${editor.deckId ? '<button id="editor-delete" class="danger">Delete</button>' : ""}
+        <button id="editor-save" class="btn primary">Save</button>
+        <button id="editor-cancel" class="btn">Cancel</button>
+        ${editor.deckId ? '<button id="editor-delete" class="btn danger">Delete</button>' : ""}
       </div>
       <div class="editor-search">
         <input id="editor-search" type="search" placeholder="Search cards to add (min 2 letters)…" autocomplete="off">
@@ -375,13 +476,29 @@ function openEditor(d) {
   });
   $("#editor-save").addEventListener("click", saveEditor);
   if (editor.deckId) {
-    $("#editor-delete").addEventListener("click", async () => {
-      if (!confirm("Delete this deck? This cannot be undone.")) return;
+    // Two-step inline confirm: first click arms the button for 3s.
+    let armed = null;
+    $("#editor-delete").addEventListener("click", async (e) => {
+      const btn = e.target;
+      if (!armed) {
+        btn.textContent = "Really delete?";
+        btn.classList.add("confirming");
+        armed = setTimeout(() => {
+          armed = null;
+          btn.textContent = "Delete";
+          btn.classList.remove("confirming");
+        }, 3000);
+        return;
+      }
+      clearTimeout(armed);
       const r = await fetch(`/api/decks/${editor.deckId}`, { method: "DELETE" });
       if (r.ok) {
         editor.active = false;
         $("#deck-detail").innerHTML = '<p class="muted">Deck deleted.</p>';
+        toast("Deck deleted.", "success");
         await loadDecks();
+      } else {
+        toast("Delete failed.", "error");
       }
     });
   }
@@ -389,6 +506,7 @@ function openEditor(d) {
   $("#editor-board-main").addEventListener("click", () => setEditorBoard("main"));
   $("#editor-board-side").addEventListener("click", () => setEditorBoard("side"));
   $("#editor-search").addEventListener("input", debounce(runCardSearch, 250));
+  $("#editor-search").addEventListener("keydown", editorSearchKeys);
   $("#editor-format").addEventListener("change", refreshEditor);
 
   $("#editor-body").addEventListener("click", (e) => {
@@ -425,7 +543,7 @@ async function runCardSearch() {
     return;
   }
   box.innerHTML = results.map((c) => `
-    <button class="search-result" data-id="${c.arena_id}" data-name="${escapeHtml(c.name)}">
+    <button class="search-result" data-id="${c.arena_id}" data-name="${escapeHtml(c.name)}"${cardPreviewAttr(c)}>
       <span class="name">${escapeHtml(c.name)}</span>
       <span class="cost">${renderManaCost(c.mana_cost)}</span>
       <span class="meta">${c.set?.toUpperCase() ?? ""} · own ${c.owned}</span>
@@ -440,6 +558,30 @@ async function runCardSearch() {
     else board.set(id, { name: b.dataset.name, qty: 1 });
     refreshEditor();
   }));
+}
+
+// Arrow keys move the highlight, Enter adds (first result if none is
+// highlighted), Escape closes. The input keeps focus throughout so rapid
+// multi-add flows stay on the keyboard.
+function editorSearchKeys(e) {
+  const box = $("#editor-results");
+  if (e.key === "Escape") {
+    box.hidden = true;
+    return;
+  }
+  if (box.hidden) return;
+  const items = $$("#editor-results .search-result");
+  if (items.length === 0) return;
+  let idx = items.findIndex((b) => b.classList.contains("selected"));
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    idx = e.key === "ArrowDown" ? Math.min(idx + 1, items.length - 1) : Math.max(idx - 1, 0);
+    items.forEach((b, i) => b.classList.toggle("selected", i === idx));
+    items[idx].scrollIntoView({ block: "nearest" });
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    items[idx >= 0 ? idx : 0].click();
+  }
 }
 
 function editorAsText() {
@@ -457,16 +599,17 @@ function renderEditorRow(c, board) {
   const fmtKey = legalityFormatKey($("#editor-format").value || null);
   const issue = cardLegalityIssue(c, fmtKey);
   const chip = issue ? `<span class="legal-chip">${escapeHtml(issue)}</span>` : "";
-  return `<div class="deck-card editor-row">
+  return `<div class="deck-card editor-row"${cardPreviewAttr(c)}>
     <span class="stepper">
-      <button data-act="dec" data-id="${c.arena_id}" data-board="${board}">−</button>
+      <button data-act="dec" data-id="${c.arena_id}" data-board="${board}" aria-label="one fewer">−</button>
       <span class="qty">${c.quantity}</span>
-      <button data-act="inc" data-id="${c.arena_id}" data-board="${board}">+</button>
+      <button data-act="inc" data-id="${c.arena_id}" data-board="${board}" aria-label="one more">+</button>
     </span>
+    <span class="rarity-dot ${c.rarity ?? ""}" title="${c.rarity ?? ""}"></span>
     <span class="name">${escapeHtml(c.name)}${chip}</span>
     <span class="own ${ownBad}">${c.owned}/${c.quantity}</span>
     <span class="cost">${renderManaCost(c.mana_cost)}</span>
-    <button class="rm" data-act="rm" data-id="${c.arena_id}" data-board="${board}">×</button>
+    <button class="rm" data-act="rm" data-id="${c.arena_id}" data-board="${board}" aria-label="remove">×</button>
   </div>`;
 }
 
@@ -537,11 +680,12 @@ async function saveEditor() {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
     editor.active = false;
+    toast(`Saved "${name}".`, "success");
     await loadDecks();
     loadDeckDetail(data.deck_id, null);
   } catch (e) {
     btn.disabled = false;
-    alert(`Save failed: ${e.message}`);
+    toast(`Save failed: ${e.message}`, "error");
   }
 }
 
@@ -619,7 +763,11 @@ function renderLegality(mainboard, sideboard, format) {
 // Both charts read from the mainboard (lands excluded). The pip chart counts
 // each {W}/{U}/… symbol in mana_cost weighted by card quantity; hybrid pips
 // like {W/B} contribute 0.5 to each color so the visual stays honest.
-const PIP_COLORS = { W: "#f5e9c5", U: "#7aa7d6", B: "#5c5c5c", R: "#d97a3c", G: "#7ab87a", C: "#bfbfbf" };
+// MTG's five mana colors are game-semantic and can't be re-stepped freely; each
+// pip row is identity-labeled by its mana symbol, so color is reinforcement,
+// not the identity channel. B and C are tuned so every fill clears 3:1 contrast
+// on the panel surface (validated with the dataviz palette checker).
+const PIP_COLORS = { W: "#f5e9c5", U: "#7aa7d6", B: "#9187a0", R: "#d97a3c", G: "#6fb573", C: "#adb6c0" };
 
 function isLand(typeLine) {
   return typeLine != null && /\bLand\b/.test(typeLine);
@@ -730,6 +878,11 @@ async function loadMatches() {
 // ---- Collection tab ----
 let collectionCache = [];
 async function loadCollection() {
+  if (collectionCache.length === 0) {
+    $("#collection-grid").innerHTML = Array.from({ length: 12 }, () => `
+      <div class="card-tile"><div class="skeleton" style="width:56px;height:78px"></div>
+      <div class="info"><div class="skeleton sk-line" style="margin-bottom:6px"></div><div class="skeleton sk-line" style="width:55%"></div></div></div>`).join("");
+  }
   // Wallet first — it's reliable; collection is a derived best-effort.
   const wallet = await fetchJSON("/api/wallet").catch(() => null);
   renderWallet(wallet);
@@ -762,7 +915,10 @@ function renderWallet(w) {
 async function deriveFromDecks() {
   const decks = await fetchJSON("/api/decks").catch(() => []);
   const seen = new Map(); // card_id -> max quantity across decks
-  for (const summary of decks) {
+  // Only game-synced personal decks imply ownership — precons are mostly
+  // unowned, and manual (user-) decks may be aspirational paste-ins.
+  const mine = decks.filter((d) => d.origin === "personal" && !d.deck_id.startsWith("user-"));
+  for (const summary of mine) {
     const d = await fetchJSON(`/api/decks/${summary.deck_id}`).catch(() => null);
     if (!d) continue;
     for (const c of [...d.mainboard, ...d.sideboard]) {
@@ -917,10 +1073,9 @@ function renderCollection() {
   for (const c of slice) {
     const tile = document.createElement("div");
     tile.className = "card-tile";
-    // Scryfall serves the same image at /small/, /normal/, /large/ — swap the
-    // path segment to grab 672×936 for the popover instead of the 488×680 normal.
-    const previewUrl = (c.image_normal || c.image_small || "").replace("/normal/", "/large/");
-    tile.dataset.preview = previewUrl;
+    tile.style.setProperty("--i", Math.min(grid.children.length, 10));
+    const previewUrl = largeImageUrl(c.image_normal || c.image_small);
+    if (previewUrl) tile.dataset.preview = previewUrl;
     tile.innerHTML = `
       ${c.image_small ? `<img src="${c.image_small}" alt="" loading="lazy">` : ""}
       <div class="info">
@@ -939,20 +1094,39 @@ function renderCollection() {
     `${start + 1}–${rangeEnd} of ${matches.length} · page ${collPage}/${totalPages}`;
 }
 
-// ---- Hover preview (collection grid) ----
+// ---- Card hover preview ----
 //
-// One singleton popover anchored next to the cursor. Tracking mousemove keeps
-// it pinned next to whatever the user is reading rather than fixed in a corner.
+// One singleton popover, document-wide: any element carrying data-preview
+// (collection tiles, deck rows, editor rows, search results) gets the
+// cursor-following card image. Tracking mousemove keeps it pinned next to
+// whatever the user is reading rather than fixed in a corner.
 (function attachCardPreview() {
   const preview = $("#card-preview");
   const img = preview.querySelector("img");
-  const grid = $("#collection-grid");
   let currentSrc = null;
 
+  let loader = null;
   function show(url, ev) {
     if (url !== currentSrc) {
-      img.src = url;
       currentSrc = url;
+      // The large image is often a cold fetch (CDN redirect → Scryfall), and
+      // browsers keep painting the previous bitmap until the new src decodes —
+      // which read as "the popover is stuck on the first card". So: swap
+      // instantly to the small rendition (already cached from the tile),
+      // then upgrade in place once the large one arrives.
+      img.src = url.replace("/large/", "/small/");
+      if (loader) loader.onload = null;
+      loader = new Image();
+      loader.onload = () => {
+        if (currentSrc === url) img.src = url;
+      };
+      loader.src = url;
+    }
+    if (preview.hidden && !reduceMotion.matches) {
+      // Retrigger the scale-in each time the popover appears.
+      preview.classList.remove("pop");
+      void preview.offsetWidth;
+      preview.classList.add("pop");
     }
     preview.hidden = false;
     position(ev);
@@ -973,21 +1147,24 @@ function renderCollection() {
     if (y < pad) y = pad;
     preview.style.left = x + "px";
     preview.style.top = y + "px";
+    // Subtle 3D tilt following the cursor's position in the viewport.
+    if (!reduceMotion.matches) {
+      const ry = (ev.clientX / window.innerWidth - 0.5) * -8;
+      const rx = (ev.clientY / window.innerHeight - 0.5) * 6;
+      img.style.transform = `perspective(900px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
+    }
   }
 
-  grid.addEventListener("mouseover", (e) => {
-    const tile = e.target.closest(".card-tile");
-    if (!tile || !tile.dataset.preview) return;
-    show(tile.dataset.preview, e);
+  document.addEventListener("mouseover", (e) => {
+    const el = e.target.closest("[data-preview]");
+    if (el && el.dataset.preview) show(el.dataset.preview, e);
+    else if (!preview.hidden) hide();
   });
-  grid.addEventListener("mousemove", (e) => {
+  document.addEventListener("mousemove", (e) => {
     if (preview.hidden) return;
     position(e);
   });
-  grid.addEventListener("mouseleave", hide);
-  grid.addEventListener("mouseout", (e) => {
-    if (!e.relatedTarget || !e.relatedTarget.closest(".card-tile")) hide();
-  });
+  document.addEventListener("mouseleave", hide);
 })();
 
 // ---- Drafts tab ----
