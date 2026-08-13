@@ -26,7 +26,12 @@ pub async fn serve(bind: String, state: Arc<AppState>) -> Result<()> {
         .route("/api/live", get(api::live))
         .route("/api/decks", get(api::list_decks).post(api::create_deck))
         .route("/api/decks/analyze", post(wildcards::analyze_pasted))
-        .route("/api/decks/{id}", get(api::get_deck))
+        .route(
+            "/api/decks/{id}",
+            get(api::get_deck).put(api::update_deck).delete(api::delete_deck),
+        )
+        .route("/api/decks/{id}/export", get(api::export_deck))
+        .route("/api/cards", get(api::search_cards))
         .route("/api/matches", get(api::list_matches))
         .route("/api/matches/{id}", get(api::get_match))
         .route("/api/collection", get(api::collection))

@@ -15,6 +15,19 @@ use serde::{Deserialize, Serialize};
 const BULK_INDEX: &str = "https://api.scryfall.com/bulk-data";
 const STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
 
+/// Arena-relevant Scryfall format keys we keep legalities for. Everything else
+/// (modern, vintage, …) is dropped to keep the cache small.
+pub const ARENA_FORMATS: &[&str] = &[
+    "standard",
+    "alchemy",
+    "historic",
+    "timeless",
+    "explorer",
+    "brawl",
+    "standardbrawl",
+    "pauper",
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Card {
     pub arena_id: u32,
@@ -29,6 +42,13 @@ pub struct Card {
     pub image_small: Option<String>,
     pub image_normal: Option<String>,
     pub scryfall_uri: Option<String>,
+    /// Arena-format legalities, filtered to [`ARENA_FORMATS`] with `not_legal`
+    /// entries dropped — a missing key means not legal. `#[serde(default)]`
+    /// keeps old caches loadable (they just report no legality data).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legalities: Option<HashMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oracle_text: Option<String>,
 }
 
 pub struct CardDb {
@@ -45,6 +65,10 @@ impl CardDb {
 
     pub fn get(&self, arena_id: u32) -> Option<&Card> {
         self.by_arena_id.get(&arena_id)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Card> {
+        self.by_arena_id.values()
     }
 
     /// Resolve a card by (set code, collector number) — used by paste-import.
@@ -168,20 +192,58 @@ async fn fetch_and_cache(cache_path: &Path) -> Result<CardDb> {
         .iter()
         .find(|e| e.bulk_type == "default_cards")
         .context("default_cards entry not in bulk index")?;
-    tracing::info!(uri = %entry.download_uri, "downloading default_cards bulk");
+    tracing::info!(uri = %entry.jsonl_download_uri, "downloading default_cards bulk");
 
-    let raw: Vec<ScryfallCard> = client
-        .get(&entry.download_uri)
+    let compressed = client
+        .get(&entry.jsonl_download_uri)
         .send()
         .await?
         .error_for_status()?
-        .json()
+        .bytes()
         .await?;
-    tracing::info!(total = raw.len(), "decoding bulk; filtering to arena cards");
+    tracing::info!(bytes = compressed.len(), "decompressing bulk; filtering to arena cards");
 
+    let filtered = tokio::task::spawn_blocking(move || {
+        let reader = std::io::BufReader::new(flate2::read::MultiGzDecoder::new(&compressed[..]));
+        parse_card_jsonl(reader)
+    })
+    .await??;
+    tracing::info!(count = filtered.len(), "filtered to arena cards; writing cache");
+
+    if let Some(parent) = cache_path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    let bytes = serde_json::to_vec(&filtered)?;
+    tokio::fs::write(cache_path, &bytes).await?;
+    Ok(build_db(filtered))
+}
+
+/// Parse Scryfall's gzip-decompressed JSONL bulk format: one card object per
+/// line. Lines that fail to parse are skipped (Scryfall adds fields/shapes
+/// between exports; one odd card must not lose the whole database).
+fn parse_card_jsonl<R: std::io::BufRead>(reader: R) -> Result<Vec<Card>> {
     let mut filtered = Vec::new();
-    for c in raw {
+    let mut bad_lines = 0usize;
+    for line in reader.lines() {
+        let line = line.context("reading card jsonl")?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let c: ScryfallCard = match serde_json::from_str(&line) {
+            Ok(c) => c,
+            Err(_) => {
+                bad_lines += 1;
+                continue;
+            }
+        };
         if let Some(arena_id) = c.arena_id {
+            let legalities = c.legalities.map(|m| {
+                m.into_iter()
+                    .filter(|(fmt, status)| {
+                        ARENA_FORMATS.contains(&fmt.as_str()) && status != "not_legal"
+                    })
+                    .collect::<HashMap<_, _>>()
+            });
             filtered.push(Card {
                 arena_id,
                 name: c.name,
@@ -195,17 +257,15 @@ async fn fetch_and_cache(cache_path: &Path) -> Result<CardDb> {
                 image_small: c.image_uris.as_ref().and_then(|u| u.small.clone()),
                 image_normal: c.image_uris.as_ref().and_then(|u| u.normal.clone()),
                 scryfall_uri: c.scryfall_uri,
+                legalities,
+                oracle_text: c.oracle_text,
             });
         }
     }
-    tracing::info!(count = filtered.len(), "filtered to arena cards; writing cache");
-
-    if let Some(parent) = cache_path.parent() {
-        std::fs::create_dir_all(parent).ok();
+    if bad_lines > 0 {
+        tracing::warn!(bad_lines, "skipped unparseable lines in Scryfall bulk jsonl");
     }
-    let bytes = serde_json::to_vec(&filtered)?;
-    tokio::fs::write(cache_path, &bytes).await?;
-    Ok(build_db(filtered))
+    Ok(filtered)
 }
 
 #[derive(Deserialize)]
@@ -217,7 +277,7 @@ struct BulkIndex {
 struct BulkEntry {
     #[serde(rename = "type")]
     bulk_type: String,
-    download_uri: String,
+    jsonl_download_uri: String,
 }
 
 #[derive(Deserialize)]
@@ -233,11 +293,71 @@ struct ScryfallCard {
     cmc: Option<f32>,
     image_uris: Option<ScryfallImageUris>,
     scryfall_uri: Option<String>,
+    legalities: Option<HashMap<String, String>>,
+    oracle_text: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct ScryfallImageUris {
     small: Option<String>,
     normal: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LINES: &str = r#"{"arena_id":75389,"name":"Lightning Strike","mana_cost":"{1}{R}","set":"dmu","collector_number":"137","cmc":2.0,"image_uris":{"small":"https://cards.scryfall.io/small/front/a/b/ab.jpg"},"legalities":{"standard":"legal","alchemy":"legal","modern":"legal","vintage":"restricted","historic":"banned","pauper":"not_legal"},"oracle_text":"Lightning Strike deals 3 damage to any target."}
+{"name":"Paper Only Card","set":"leg","collector_number":"12"}
+not json at all
+{"arena_id":12345,"name":"Test Card"}"#;
+
+    #[test]
+    fn parses_jsonl_keeping_arena_cards_and_skipping_bad_lines() {
+        let cards = parse_card_jsonl(std::io::Cursor::new(LINES)).unwrap();
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].arena_id, 75389);
+        assert_eq!(cards[0].name, "Lightning Strike");
+        assert_eq!(cards[0].image_small.as_deref(), Some("https://cards.scryfall.io/small/front/a/b/ab.jpg"));
+        assert_eq!(cards[1].arena_id, 12345);
+    }
+
+    #[test]
+    fn legalities_filtered_to_arena_formats_dropping_not_legal() {
+        let cards = parse_card_jsonl(std::io::Cursor::new(LINES)).unwrap();
+        let leg = cards[0].legalities.as_ref().unwrap();
+        assert_eq!(leg.get("standard").map(String::as_str), Some("legal"));
+        // banned survives the filter — the UI needs to show it
+        assert_eq!(leg.get("historic").map(String::as_str), Some("banned"));
+        // non-Arena formats and not_legal entries are dropped
+        assert!(!leg.contains_key("modern"));
+        assert!(!leg.contains_key("vintage"));
+        assert!(!leg.contains_key("pauper"));
+        assert_eq!(cards[0].oracle_text.as_deref(), Some("Lightning Strike deals 3 damage to any target."));
+        // cards without legalities data stay loadable
+        assert!(cards[1].legalities.is_none());
+    }
+
+    #[test]
+    fn parses_gzipped_jsonl() {
+        use std::io::Write;
+        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        enc.write_all(LINES.as_bytes()).unwrap();
+        let gz = enc.finish().unwrap();
+        let reader = std::io::BufReader::new(flate2::read::MultiGzDecoder::new(&gz[..]));
+        let cards = parse_card_jsonl(reader).unwrap();
+        assert_eq!(cards.len(), 2);
+    }
+
+    #[test]
+    fn bulk_index_decodes_modern_scryfall_shape() {
+        let body = r#"{"object":"list","has_more":false,"data":[
+            {"object":"bulk_data","type":"oracle_cards","jsonl_download_uri":"https://data.scryfall.io/oracle.jsonl.gz"},
+            {"object":"bulk_data","type":"default_cards","jsonl_download_uri":"https://data.scryfall.io/default-cards-x.jsonl.gz","compressed_size":77512052}
+        ]}"#;
+        let index: BulkIndex = serde_json::from_str(body).unwrap();
+        let entry = index.data.iter().find(|e| e.bulk_type == "default_cards").unwrap();
+        assert!(entry.jsonl_download_uri.ends_with(".jsonl.gz"));
+    }
 }
 

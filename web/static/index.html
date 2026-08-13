@@ -55,6 +55,16 @@
       <textarea id="analyze-text" rows="10" placeholder="Deck&#10;4 Lightning Bolt (M21) 162&#10;...&#10;&#10;Sideboard&#10;2 Negate (NEO) 58"></textarea>
       <div class="analyze-actions">
         <input id="save-deck-name" placeholder="Deck name (optional, enables Save)" type="text">
+        <select id="analyze-format" title="Check legality for a format">
+          <option value="">No format check</option>
+          <option>Standard</option>
+          <option>Alchemy</option>
+          <option>Historic</option>
+          <option>Timeless</option>
+          <option>Explorer</option>
+          <option value="Brawl">Standard Brawl</option>
+          <option value="HistoricBrawl">Brawl (100)</option>
+        </select>
         <button id="analyze-btn" class="primary">Analyze</button>
         <button id="save-deck-btn" class="primary" disabled>Save as deck</button>
       </div>
@@ -63,7 +73,17 @@
     </details>
 
     <div class="split">
-      <ul id="decks-list" class="list"></ul>
+      <div class="deck-list-col">
+        <div class="deck-list-controls">
+          <label for="deck-sort" class="muted">Sort</label>
+          <select id="deck-sort">
+            <option value="recent">Recently updated</option>
+            <option value="buildable">Closest to buildable</option>
+          </select>
+          <button id="new-deck-btn" title="Build a deck from scratch">+ New deck</button>
+        </div>
+        <ul id="decks-list" class="list"></ul>
+      </div>
       <div id="deck-detail" class="detail"><p class="muted">Pick a deck to see its contents.</p></div>
     </div>
   </section>

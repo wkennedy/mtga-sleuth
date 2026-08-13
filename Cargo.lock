@@ -1311,6 +1311,7 @@ dependencies = [
  "chrono",
  "clap",
  "directories",
+ "flate2",
  "futures",
  "mime_guess",
  "once_cell",

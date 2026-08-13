@@ -25,6 +25,8 @@ pub struct DeckRow {
     pub name: String,
     pub format: Option<String>,
     pub last_updated: String,
+    pub wildcards_needed: wildcards::WildcardCost,
+    pub total_missing: u32,
 }
 
 pub async fn list_decks(State(state): State<Arc<AppState>>) -> Result<Json<Vec<DeckRow>>, ApiError> {
@@ -33,13 +35,19 @@ pub async fn list_decks(State(state): State<Arc<AppState>>) -> Result<Json<Vec<D
     )
     .fetch_all(&state.pool)
     .await?;
+    let mut costs = wildcards::costs_for_all_decks(&state, &state.pool).await?;
     Ok(Json(
         rows.into_iter()
-            .map(|(deck_id, name, format, last_updated)| DeckRow {
-                deck_id,
-                name: state.loc.translate(&name).into_owned(),
-                format,
-                last_updated,
+            .map(|(deck_id, name, format, last_updated)| {
+                let cost = costs.remove(&deck_id).unwrap_or_default();
+                DeckRow {
+                    name: state.loc.translate(&name).into_owned(),
+                    deck_id,
+                    format,
+                    last_updated,
+                    wildcards_needed: cost.wildcards_needed,
+                    total_missing: cost.total_missing,
+                }
             })
             .collect(),
     ))
@@ -69,6 +77,11 @@ pub struct DeckCardEntry {
     pub image_small: Option<String>,
     pub owned: u32,
     pub missing: u32,
+    /// Arena-format legality map (see cards::ARENA_FORMATS). Absent when the
+    /// card DB has no legality data (old cache) — the UI must then skip
+    /// validation rather than call everything illegal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub legalities: Option<std::collections::HashMap<String, String>>,
 }
 
 pub async fn get_deck(
@@ -100,6 +113,51 @@ pub async fn get_deck(
         unique_missing: analysis.unique_missing,
         total_missing: analysis.total_missing,
     }))
+}
+
+/// GET /api/decks/{id}/export — the deck as Arena-format text, suitable for
+/// pasting into MTGA's import dialog (and for re-import here). Cards missing
+/// from the card DB fall back to `arena_id,quantity` lines, which our own
+/// importer accepts but Arena's does not.
+pub async fn export_deck(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let exists: Option<(String,)> = sqlx::query_as("SELECT deck_id FROM decks WHERE deck_id = ?")
+        .bind(&id)
+        .fetch_optional(&state.pool)
+        .await?;
+    exists.ok_or(ApiError::NotFound)?;
+
+    let rows: Vec<(i64, i64, i64)> = sqlx::query_as(
+        "SELECT card_id, quantity, sideboard FROM deck_cards WHERE deck_id = ? ORDER BY sideboard, rowid",
+    )
+    .bind(&id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut text = String::from("Deck\n");
+    let mut in_sideboard = false;
+    for (card_id, qty, sideboard) in rows {
+        if sideboard != 0 && !in_sideboard {
+            text.push_str("\nSideboard\n");
+            in_sideboard = true;
+        }
+        match state.cards.get(card_id as u32) {
+            Some(c) => match (c.set.as_deref(), c.collector_number.as_deref()) {
+                (Some(set), Some(num)) => {
+                    text.push_str(&format!("{qty} {} ({}) {num}\n", c.name, set.to_uppercase()))
+                }
+                _ => text.push_str(&format!("{qty} {}\n", c.name)),
+            },
+            None => text.push_str(&format!("{card_id},{qty}\n")),
+        }
+    }
+
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        text,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -183,6 +241,97 @@ pub async fn create_deck(
     tx.commit().await?;
 
     Ok(Json(CreateDeckResponse { deck_id }))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateDeckRequest {
+    pub name: String,
+    pub format: Option<String>,
+    #[serde(default)]
+    pub mainboard: Vec<(u32, u32)>,
+    #[serde(default)]
+    pub sideboard: Vec<(u32, u32)>,
+}
+
+/// PUT /api/decks/{id} — replace a user-authored deck's name/format/cards.
+/// MTGA-synced decks are read-only here: the game would overwrite local edits
+/// on the next sync, so the UI clones them into a `user-` deck instead.
+pub async fn update_deck(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateDeckRequest>,
+) -> Result<Json<CreateDeckResponse>, ApiError> {
+    if !id.starts_with("user-") {
+        return Err(ApiError::BadRequest(
+            "only user-created decks can be edited; clone the deck first".into(),
+        ));
+    }
+    let name = req.name.trim();
+    if name.is_empty() {
+        return Err(ApiError::BadRequest("name is required".into()));
+    }
+    if req.mainboard.is_empty() && req.sideboard.is_empty() {
+        return Err(ApiError::BadRequest("deck must contain at least one card".into()));
+    }
+    let exists: Option<(String,)> = sqlx::query_as("SELECT deck_id FROM decks WHERE deck_id = ?")
+        .bind(&id)
+        .fetch_optional(&state.pool)
+        .await?;
+    exists.ok_or(ApiError::NotFound)?;
+
+    // Aggregate duplicate ids so they can't violate the (deck, card, side) PK.
+    let dedupe = |pairs: &[(u32, u32)]| {
+        let mut m: std::collections::BTreeMap<u32, u32> = std::collections::BTreeMap::new();
+        for (id, qty) in pairs {
+            *m.entry(*id).or_insert(0) += qty;
+        }
+        m
+    };
+
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("UPDATE decks SET name = ?, format = ?, last_updated = datetime('now') WHERE deck_id = ?")
+        .bind(name)
+        .bind(req.format.as_deref())
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM deck_cards WHERE deck_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    for (side, pairs) in [(0i64, dedupe(&req.mainboard)), (1, dedupe(&req.sideboard))] {
+        for (card_id, qty) in pairs {
+            sqlx::query(
+                "INSERT INTO deck_cards (deck_id, card_id, quantity, sideboard) VALUES (?, ?, ?, ?)",
+            )
+            .bind(&id)
+            .bind(card_id as i64)
+            .bind(qty as i64)
+            .bind(side)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+    tx.commit().await?;
+    Ok(Json(CreateDeckResponse { deck_id: id }))
+}
+
+/// DELETE /api/decks/{id} — user-authored decks only.
+pub async fn delete_deck(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    if !id.starts_with("user-") {
+        return Err(ApiError::BadRequest("only user-created decks can be deleted".into()));
+    }
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("DELETE FROM deck_cards WHERE deck_id = ?").bind(&id).execute(&mut *tx).await?;
+    let res = sqlx::query("DELETE FROM decks WHERE deck_id = ?").bind(&id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    if res.rows_affected() == 0 {
+        return Err(ApiError::NotFound);
+    }
+    Ok(Json(json!({"deleted": id})))
 }
 
 #[derive(Serialize)]
@@ -383,7 +532,82 @@ fn card_to_entry(state: &AppState, arena_id: u32, qty: u32) -> DeckCardEntry {
         image_small: c.and_then(|c| c.image_small.as_deref().map(rewrite_image_url)),
         owned: 0,
         missing: 0,
+        legalities: None, // draft views don't validate formats
     }
+}
+
+#[derive(Deserialize)]
+pub struct CardSearchQuery {
+    pub q: String,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+#[derive(Serialize)]
+pub struct CardSearchResult {
+    pub arena_id: u32,
+    pub name: String,
+    pub mana_cost: Option<String>,
+    pub cmc: Option<f32>,
+    pub type_line: Option<String>,
+    pub rarity: Option<String>,
+    pub set: Option<String>,
+    pub image_small: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub legalities: Option<std::collections::HashMap<String, String>>,
+    pub owned: u32,
+}
+
+/// GET /api/cards?q=bolt — name-substring search over the card DB for the
+/// deck editor. One result per card name (newest printing wins), prefix
+/// matches ranked before mid-word matches, owned counts joined in.
+pub async fn search_cards(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<CardSearchQuery>,
+) -> Result<Json<Vec<CardSearchResult>>, ApiError> {
+    let q = query.q.trim().to_lowercase();
+    if q.len() < 2 {
+        return Ok(Json(Vec::new()));
+    }
+    let limit = query.limit.unwrap_or(20).min(50);
+
+    let mut best: std::collections::HashMap<&str, &Card> = std::collections::HashMap::new();
+    for c in state.cards.iter() {
+        if c.name.to_lowercase().contains(&q) {
+            let entry = best.entry(c.name.as_str()).or_insert(c);
+            if c.arena_id > entry.arena_id {
+                *entry = c;
+            }
+        }
+    }
+    let mut cards: Vec<&Card> = best.into_values().collect();
+    cards.sort_by(|a, b| {
+        let ap = a.name.to_lowercase().starts_with(&q);
+        let bp = b.name.to_lowercase().starts_with(&q);
+        bp.cmp(&ap).then_with(|| a.name.cmp(&b.name))
+    });
+    cards.truncate(limit);
+
+    let ids: std::collections::HashSet<i64> = cards.iter().map(|c| c.arena_id as i64).collect();
+    let owned = wildcards::fetch_owned(&state.pool, &ids).await?;
+
+    Ok(Json(
+        cards
+            .into_iter()
+            .map(|c| CardSearchResult {
+                arena_id: c.arena_id,
+                name: c.name.clone(),
+                mana_cost: c.mana_cost.clone(),
+                cmc: c.cmc,
+                type_line: c.type_line.clone(),
+                rarity: c.rarity.clone(),
+                set: c.set.clone(),
+                image_small: c.image_small.as_deref().map(rewrite_image_url),
+                legalities: c.legalities.clone(),
+                owned: owned.get(&(c.arena_id as i64)).copied().unwrap_or(0),
+            })
+            .collect(),
+    ))
 }
 
 pub async fn get_card(

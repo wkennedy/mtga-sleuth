@@ -17,12 +17,18 @@ use crate::cards::rewrite_image_url;
 use crate::state::AppState;
 use crate::web::api::{ApiError, DeckCardEntry};
 
-#[derive(Default, Serialize)]
+#[derive(Default, Clone, Serialize)]
 pub struct WildcardCost {
     pub common: u32,
     pub uncommon: u32,
     pub rare: u32,
     pub mythic: u32,
+}
+
+#[derive(Default, Clone, Serialize)]
+pub struct DeckCost {
+    pub wildcards_needed: WildcardCost,
+    pub total_missing: u32,
 }
 
 pub struct Analysis {
@@ -127,12 +133,13 @@ fn hydrate(
                 image_small: card.and_then(|c| c.image_small.as_deref().map(rewrite_image_url)),
                 owned: row_owned,
                 missing: row_missing,
+                legalities: card.and_then(|c| c.legalities.clone()),
             }
         })
         .collect()
 }
 
-async fn fetch_owned(
+pub(crate) async fn fetch_owned(
     pool: &SqlitePool,
     ids: &HashSet<i64>,
 ) -> Result<HashMap<i64, u32>, ApiError> {
@@ -153,6 +160,45 @@ async fn fetch_owned(
 
 fn is_basic_land(type_line: Option<&str>) -> bool {
     type_line.is_some_and(|t| t.contains("Basic Land"))
+}
+
+/// Wildcard cost for every deck in one pass, for the deck-list view. A single
+/// grouped query beats running `analyze` once per deck (hundreds of decks once
+/// precons are counted). Mirrors `analyze`'s semantics: mainboard + sideboard
+/// quantities combine into one requirement per card, basic lands are free.
+pub async fn costs_for_all_decks(
+    state: &AppState,
+    pool: &SqlitePool,
+) -> Result<HashMap<String, DeckCost>, ApiError> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT dc.deck_id, dc.card_id, SUM(dc.quantity), COALESCE(MAX(c.quantity), 0)
+         FROM deck_cards dc LEFT JOIN collection c ON c.card_id = dc.card_id
+         GROUP BY dc.deck_id, dc.card_id",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut out: HashMap<String, DeckCost> = HashMap::new();
+    for (deck_id, card_id, required, owned) in rows {
+        let entry = out.entry(deck_id).or_default();
+        let card = state.cards.get(card_id as u32);
+        if is_basic_land(card.and_then(|c| c.type_line.as_deref())) {
+            continue;
+        }
+        let missing = (required - owned).max(0) as u32;
+        if missing == 0 {
+            continue;
+        }
+        entry.total_missing += missing;
+        match card.and_then(|c| c.rarity.as_deref()) {
+            Some("common") => entry.wildcards_needed.common += missing,
+            Some("uncommon") => entry.wildcards_needed.uncommon += missing,
+            Some("rare") => entry.wildcards_needed.rare += missing,
+            Some("mythic") => entry.wildcards_needed.mythic += missing,
+            _ => {}
+        }
+    }
+    Ok(out)
 }
 
 // ---- POST /api/decks/analyze --------------------------------------------------

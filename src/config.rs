@@ -74,7 +74,10 @@ impl Config {
         std::fs::create_dir_all(&cache_dir).context("creating cache dir")?;
 
         let db_path = db_override.map(PathBuf::from).unwrap_or_else(|| data_dir.join("tracker.sqlite"));
-        let card_cache_path = cache_dir.join("scryfall-arena.json");
+        // v2: cards carry legalities + oracle_text. The old cache lacks them, so
+        // a new filename forces a one-time refetch; clean the old file up.
+        let card_cache_path = cache_dir.join("scryfall-arena-v2.json");
+        let _ = std::fs::remove_file(cache_dir.join("scryfall-arena.json"));
         let assets_dir = cache_dir.join("assets");
 
         let mtga_data_dir = match data_dir_override {

@@ -232,6 +232,245 @@ ul.list li small { display: block; color: var(--muted); margin-top: 2px; }
   vertical-align: 1px;
 }
 
+.deck-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.deck-detail-head h3 { margin: 0; }
+#export-deck-btn {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#export-deck-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.deck-list-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.deck-list-controls select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.deck-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  border-radius: 8px;
+  letter-spacing: 0.3px;
+  vertical-align: 1px;
+  background: #2a3445;
+  color: var(--muted);
+}
+.deck-badge.complete { color: #7ab87a; }
+.deck-badge.craftable { color: #d4a85a; }
+.deck-badge.short { color: var(--muted); }
+.wc-abbr { font-weight: 600; }
+.wc-abbr.wc-common { color: #d6dde6; }
+.wc-abbr.wc-uncommon { color: #b3c5d3; }
+.wc-abbr.wc-rare { color: #d4a85a; }
+.wc-abbr.wc-mythic { color: #d97a3c; }
+
+.wallet-tile .have {
+  font-size: 11px;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.wallet-tile .have.good { color: #7ab87a; }
+.wallet-tile .have.bad { color: #c96a6a; }
+
+.wc-verdict {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.wc-verdict.good { color: #7ab87a; }
+.wc-verdict.bad { color: #c96a6a; }
+
+.legality {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+.legality.ok { color: #7ab87a; }
+.legality.bad { color: #c96a6a; }
+.legality.bad strong { color: #c96a6a; }
+.legality ul { margin: 6px 0 0; padding-left: 18px; }
+.legality li { margin: 2px 0; }
+
+.legal-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 10px;
+  border-radius: 6px;
+  background: #3d2528;
+  color: #c96a6a;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  vertical-align: 1px;
+}
+
+.analyze-actions select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+/* ---- Deck editor ---- */
+.editor-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.editor-head input[type="text"] {
+  flex: 1;
+  min-width: 160px;
+  background: #10141c;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  border-radius: 4px;
+  font: inherit;
+}
+.editor-head select, .editor-head button {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.editor-head button.primary { background: var(--accent); color: #10141c; border-color: var(--accent); font-weight: 600; }
+.editor-head button.primary:disabled { opacity: 0.5; cursor: default; }
+.editor-head button.danger { color: #c96a6a; }
+.editor-head button.danger:hover { border-color: #c96a6a; }
+
+.editor-search { position: relative; margin-bottom: 12px; display: flex; gap: 8px; }
+.editor-search input {
+  flex: 1;
+  background: #10141c;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  border-radius: 4px;
+  font: inherit;
+}
+.board-toggle { display: flex; }
+.board-toggle button {
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.board-toggle button:first-child { border-radius: 4px 0 0 4px; }
+.board-toggle button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+.board-toggle button.active { color: var(--accent); background: #2a3445; }
+
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+.search-result {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.search-result:hover { background: #232b39; }
+.search-result .name { flex: 1; }
+.search-result .meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.result-empty { padding: 8px 10px; }
+
+.editor-row .stepper { display: inline-flex; align-items: center; gap: 4px; }
+.editor-row .stepper button, .editor-row .rm {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+.editor-row .stepper button:hover, .editor-row .rm:hover { border-color: var(--accent); color: var(--accent); }
+.editor-row .rm:hover { border-color: #c96a6a; color: #c96a6a; }
+.editor-row .stepper .qty { min-width: 20px; text-align: center; }
+
+#new-deck-btn {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: auto;
+}
+#new-deck-btn:hover { border-color: var(--accent); color: var(--accent); }
+.deck-detail-actions { display: flex; gap: 8px; }
+#edit-deck-btn {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#edit-deck-btn:hover { border-color: var(--accent); color: var(--accent); }
+
 .charts {
   display: grid;
   grid-template-columns: 1fr 1fr;

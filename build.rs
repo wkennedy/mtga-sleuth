@@ -45,37 +45,63 @@ fn main() {
         .expect("bulk-data .data is array")
         .iter()
         .find(|e| e["type"] == "default_cards")
-        .and_then(|e| e["download_uri"].as_str())
+        .and_then(|e| e["jsonl_download_uri"].as_str())
         .expect("default_cards entry not found");
 
     eprintln!("build.rs: downloading {download_uri}");
     let raw = http_get(download_uri);
-    let parsed: serde_json::Value = serde_json::from_slice(&raw).expect("parse default_cards");
-    let arr = parsed.as_array().expect("default_cards is array");
 
-    eprintln!("build.rs: filtering {} cards to arena entries…", arr.len());
-    let filtered: Vec<serde_json::Value> = arr
-        .iter()
-        .filter(|c| c.get("arena_id").is_some())
-        .map(|c| {
-            // Mirror the field set persisted by cards/mod.rs::Card so the
-            // bundled JSON can be loaded by the same deserializer at runtime.
-            serde_json::json!({
-                "arena_id": c["arena_id"],
-                "name": c["name"],
-                "mana_cost": c.get("mana_cost"),
-                "type_line": c.get("type_line"),
-                "colors": c.get("colors"),
-                "rarity": c.get("rarity"),
-                "set": c.get("set"),
-                "collector_number": c.get("collector_number"),
-                "cmc": c.get("cmc"),
-                "image_small": c.get("image_uris").and_then(|u| u.get("small")),
-                "image_normal": c.get("image_uris").and_then(|u| u.get("normal")),
-                "scryfall_uri": c.get("scryfall_uri"),
-            })
-        })
-        .collect();
+    // The bulk file is gzipped JSONL: one card object per line.
+    use std::io::BufRead;
+    let reader = std::io::BufReader::new(flate2::read::MultiGzDecoder::new(&raw[..]));
+    let mut filtered: Vec<serde_json::Value> = Vec::new();
+    let mut total = 0usize;
+    for line in reader.lines() {
+        let line = line.expect("read default_cards jsonl line");
+        if line.trim().is_empty() {
+            continue;
+        }
+        total += 1;
+        let c: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if c.get("arena_id").is_none() {
+            continue;
+        }
+        // Mirror the field set persisted by cards/mod.rs::Card so the
+        // bundled JSON can be loaded by the same deserializer at runtime.
+        // Legalities filtering must match ARENA_FORMATS in cards/mod.rs.
+        let arena_formats = [
+            "standard", "alchemy", "historic", "timeless",
+            "explorer", "brawl", "standardbrawl", "pauper",
+        ];
+        let legalities = c.get("legalities").and_then(|l| l.as_object()).map(|m| {
+            m.iter()
+                .filter(|(fmt, status)| {
+                    arena_formats.contains(&fmt.as_str()) && status.as_str() != Some("not_legal")
+                })
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect::<serde_json::Map<_, _>>()
+        });
+        filtered.push(serde_json::json!({
+            "arena_id": c["arena_id"],
+            "name": c["name"],
+            "mana_cost": c.get("mana_cost"),
+            "type_line": c.get("type_line"),
+            "colors": c.get("colors"),
+            "rarity": c.get("rarity"),
+            "set": c.get("set"),
+            "collector_number": c.get("collector_number"),
+            "cmc": c.get("cmc"),
+            "image_small": c.get("image_uris").and_then(|u| u.get("small")),
+            "image_normal": c.get("image_uris").and_then(|u| u.get("normal")),
+            "scryfall_uri": c.get("scryfall_uri"),
+            "legalities": legalities,
+            "oracle_text": c.get("oracle_text"),
+        }));
+    }
+    eprintln!("build.rs: filtered {total} cards to {} arena entries…", filtered.len());
 
     let out = serde_json::to_vec(&filtered).expect("serialize bundle");
     eprintln!(
