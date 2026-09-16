@@ -49,6 +49,26 @@ pub struct Card {
     pub legalities: Option<HashMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oracle_text: Option<String>,
+    /// Colors this card can produce ("W".."G", "C"), straight from Scryfall.
+    /// Present on lands and other mana sources; the draw simulator uses it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub produced_mana: Option<Vec<String>>,
+    /// Minimal projection of Scryfall's card_faces for multi-faced cards
+    /// (MDFC/split/adventure). Only the fields the simulator needs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card_faces: Option<Vec<CardFace>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CardFace {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mana_cost: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub type_line: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub produced_mana: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oracle_text: Option<String>,
 }
 
 pub struct CardDb {
@@ -61,6 +81,12 @@ pub struct CardDb {
 impl CardDb {
     pub fn empty() -> Self {
         Self { by_arena_id: HashMap::new(), by_set_num: HashMap::new() }
+    }
+
+    /// Build a CardDb straight from cards — for unit tests elsewhere in the crate.
+    #[cfg(test)]
+    pub fn from_cards_for_test(cards: Vec<Card>) -> Self {
+        build_db(cards)
     }
 
     pub fn get(&self, arena_id: u32) -> Option<&Card> {
@@ -259,6 +285,8 @@ fn parse_card_jsonl<R: std::io::BufRead>(reader: R) -> Result<Vec<Card>> {
                 scryfall_uri: c.scryfall_uri,
                 legalities,
                 oracle_text: c.oracle_text,
+                produced_mana: c.produced_mana,
+                card_faces: c.card_faces,
             });
         }
     }
@@ -295,6 +323,9 @@ struct ScryfallCard {
     scryfall_uri: Option<String>,
     legalities: Option<HashMap<String, String>>,
     oracle_text: Option<String>,
+    produced_mana: Option<Vec<String>>,
+    // Scryfall face objects carry many more keys; serde ignores the rest.
+    card_faces: Option<Vec<CardFace>>,
 }
 
 #[derive(Deserialize)]
@@ -310,16 +341,34 @@ mod tests {
     const LINES: &str = r#"{"arena_id":75389,"name":"Lightning Strike","mana_cost":"{1}{R}","set":"dmu","collector_number":"137","cmc":2.0,"image_uris":{"small":"https://cards.scryfall.io/small/front/a/b/ab.jpg"},"legalities":{"standard":"legal","alchemy":"legal","modern":"legal","vintage":"restricted","historic":"banned","pauper":"not_legal"},"oracle_text":"Lightning Strike deals 3 damage to any target."}
 {"name":"Paper Only Card","set":"leg","collector_number":"12"}
 not json at all
-{"arena_id":12345,"name":"Test Card"}"#;
+{"arena_id":12345,"name":"Test Card"}
+{"arena_id":70000,"name":"Deathcap Glade","type_line":"Land","produced_mana":["B","G"],"oracle_text":"Deathcap Glade enters the battlefield tapped unless you control two or more other lands."}
+{"arena_id":75981,"name":"Shatterskull Smashing // Shatterskull, the Hammer Pass","cmc":2.0,"card_faces":[{"mana_cost":"{X}{R}{R}","type_line":"Sorcery","oracle_text":"Shatterskull Smashing deals X damage."},{"mana_cost":"","type_line":"Land","produced_mana":["R"],"oracle_text":"As Shatterskull, the Hammer Pass enters the battlefield, you may pay 3 life."}]}"#;
 
     #[test]
     fn parses_jsonl_keeping_arena_cards_and_skipping_bad_lines() {
         let cards = parse_card_jsonl(std::io::Cursor::new(LINES)).unwrap();
-        assert_eq!(cards.len(), 2);
+        assert_eq!(cards.len(), 4);
         assert_eq!(cards[0].arena_id, 75389);
         assert_eq!(cards[0].name, "Lightning Strike");
         assert_eq!(cards[0].image_small.as_deref(), Some("https://cards.scryfall.io/small/front/a/b/ab.jpg"));
         assert_eq!(cards[1].arena_id, 12345);
+    }
+
+    #[test]
+    fn parses_produced_mana_and_card_faces() {
+        let cards = parse_card_jsonl(std::io::Cursor::new(LINES)).unwrap();
+        let land = &cards[2];
+        assert_eq!(land.produced_mana.as_deref(), Some(&["B".to_string(), "G".to_string()][..]));
+        let mdfc = &cards[3];
+        let faces = mdfc.card_faces.as_ref().unwrap();
+        assert_eq!(faces.len(), 2);
+        assert_eq!(faces[0].mana_cost.as_deref(), Some("{X}{R}{R}"));
+        assert_eq!(faces[1].type_line.as_deref(), Some("Land"));
+        assert_eq!(faces[1].produced_mana.as_deref(), Some(&["R".to_string()][..]));
+        // plain cards stay loadable with the new fields absent
+        assert!(cards[0].produced_mana.is_none());
+        assert!(cards[0].card_faces.is_none());
     }
 
     #[test]
@@ -346,7 +395,7 @@ not json at all
         let gz = enc.finish().unwrap();
         let reader = std::io::BufReader::new(flate2::read::MultiGzDecoder::new(&gz[..]));
         let cards = parse_card_jsonl(reader).unwrap();
-        assert_eq!(cards.len(), 2);
+        assert_eq!(cards.len(), 4);
     }
 
     #[test]

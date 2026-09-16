@@ -242,10 +242,12 @@ async function loadDeckDetail(id, li) {
       <span class="deck-detail-actions">
         <button id="edit-deck-btn" class="btn small">${editLabel}</button>
         <button id="export-deck-btn" class="btn small" title="Copy this deck as Arena-format text">Copy for Arena</button>
+        <button id="sim-deck-btn" class="btn small" title="Monte Carlo draw simulation: mulligans, mana screw, curve-out odds">Simulate draws</button>
       </span>
     </div>
     ${banner ? "" : `<p class="muted">${d.format ?? "Unknown format"}</p>`}
     ${renderDeckCharts(d.mainboard)}
+    <div id="sim-panel"></div>
     ${renderWildcardSummary(d)}
     ${renderLegality(d.mainboard, d.sideboard, d.format)}
     <div class="deck-section">
@@ -255,6 +257,7 @@ async function loadDeckDetail(id, li) {
     ${d.sideboard.length ? `<div class="deck-section"><h4>Sideboard (${d.sideboard.reduce((a, c) => a + c.quantity, 0)})</h4>${d.sideboard.map((c) => renderDeckCard(c, legalityFormatKey(d.format))).join("")}</div>` : ""}
   `;
   $("#edit-deck-btn").addEventListener("click", () => openEditor(d));
+  $("#sim-deck-btn").addEventListener("click", () => toggleSimPanel(id));
   $("#export-deck-btn").addEventListener("click", async (e) => {
     const btn = e.target;
     try {
@@ -849,6 +852,165 @@ function renderManaCost(text) {
     const safe = encodeURIComponent(slug);
     return `<img class="mana" src="/cdn/symbols/${safe}.svg" alt="{${escapeHtml(sym)}}" title="{${escapeHtml(sym)}}" loading="lazy">`;
   });
+}
+
+// ---- Draw simulator (deck detail panel) ----
+
+function toggleSimPanel(deckId) {
+  const panel = $("#sim-panel");
+  if (panel.dataset.open) {
+    panel.innerHTML = "";
+    delete panel.dataset.open;
+    return;
+  }
+  panel.dataset.open = "1";
+  panel.innerHTML = `
+    <div class="sim-params">
+      <span class="board-toggle" id="sim-mode">
+        <button data-v="play" class="active">On the play</button>
+        <button data-v="draw">On the draw</button>
+      </span>
+      <span class="board-toggle" id="sim-shuffle" title="Bo1 uses Arena's opening-hand smoothing; Bo3 is a true random shuffle">
+        <button data-v="bo1" class="active">Bo1 smoothed</button>
+        <button data-v="bo3">Bo3 random</button>
+      </span>
+      <select id="sim-iters">
+        <option value="10000">10,000 games</option>
+        <option value="50000">50,000 games</option>
+        <option value="100000">100,000 games</option>
+      </select>
+      <button id="sim-run" class="btn small primary">Run</button>
+      <span id="sim-status" class="muted"></span>
+    </div>
+    <div id="sim-results"></div>`;
+  panel.querySelectorAll(".board-toggle").forEach((seg) => {
+    seg.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      seg.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+    });
+  });
+  $("#sim-run").addEventListener("click", () => runDeckSim(deckId));
+}
+
+async function runDeckSim(deckId) {
+  const btn = $("#sim-run");
+  const status = $("#sim-status");
+  const iterations = Number($("#sim-iters").value);
+  const body = {
+    iterations,
+    on_play: $("#sim-mode button.active").dataset.v === "play",
+    bo1_smoothing: $("#sim-shuffle button.active").dataset.v === "bo1",
+  };
+  btn.disabled = true;
+  status.textContent = "Simulating…";
+  try {
+    const r = await fetch(`/api/decks/${deckId}/simulate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    status.textContent = `${iterations.toLocaleString()} games`;
+    $("#sim-results").innerHTML = renderSimResults(data);
+  } catch (e) {
+    status.textContent = "";
+    $("#sim-results").innerHTML = `<p class="error">Simulation failed: ${escapeHtml(e.message)}</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function simPct(v) {
+  return `${(v * 100).toFixed(1)}%`;
+}
+
+// Label / horizontal bar / value row. Reuses .pip-bar/.pip-fill for the bar.
+function simRow(label, v, color) {
+  return `<div class="sim-row">
+    <span class="sim-row-label">${label}</span>
+    <div class="pip-bar"><div class="pip-fill" style="width:${(v * 100).toFixed(1)}%; background:${color}"></div></div>
+    <span class="sim-row-val">${simPct(v)}</span>
+  </div>`;
+}
+
+function renderSimResults(r) {
+  // goodLow: true = low is healthy (screw/flood), false = high is healthy, null = neutral
+  const tile = (label, v, goodLow) => {
+    let cls = "";
+    if (goodLow === true) cls = v <= 0.15 ? "good" : v > 0.3 ? "bad" : "";
+    if (goodLow === false) cls = v >= 0.7 ? "good" : v < 0.4 ? "bad" : "";
+    return `<div class="wallet-tile"><div class="label">${label}</div><div class="value ${cls}">${simPct(v)}</div></div>`;
+  };
+
+  const mull = r.mulligan_distribution;
+  const mullRows = [["Kept 7", mull.kept7], ["Kept 6", mull.kept6], ["Kept 5", mull.kept5], ["Kept 4", mull.kept4]]
+    .map(([l, v]) => simRow(l, v, "var(--accent)"))
+    .join("");
+
+  const dropMax = Math.max(0.01, ...r.land_drops_on_curve);
+  const dropBars = r.land_drops_on_curve.map((v, i) => `
+    <div class="curve-col">
+      <div class="curve-bar" style="height:${Math.round((v / dropMax) * 80)}px" title="All land drops through turn ${i + 1}: ${simPct(v)}"></div>
+      <div class="curve-label">T${i + 1}</div>
+      <div class="curve-count">${Math.round(v * 100)}%</div>
+    </div>`).join("");
+
+  const colorRows = r.colors.map((c) => {
+    const label = `<img class="mana" src="/cdn/symbols/${encodeURIComponent(c.color)}.svg" alt="{${c.color}}"> by T${c.first_needed_turn}`;
+    return simRow(label, c.p_on_time, PIP_COLORS[c.color] ?? "var(--accent)");
+  }).join("");
+
+  const castRows = r.cards.map((c) => {
+    const mv = Math.max(1, c.mana_value);
+    const by = (t) => (t <= c.p_cast_by.length ? simPct(c.p_cast_by[t - 1]) : "—");
+    return `<tr>
+      <td>${c.quantity}× ${escapeHtml(c.name)}</td>
+      <td>${renderManaCost(c.mana_cost)}</td>
+      <td>${simPct(c.p_cast_on_curve)}</td>
+      <td>${by(mv + 1)}</td>
+      <td>${by(mv + 2)}</td>
+    </tr>`;
+  }).join("");
+
+  const warnings = r.warnings.length
+    ? `<p class="muted sim-warnings">⚠ ${r.warnings.map(escapeHtml).join("<br>⚠ ")}</p>`
+    : "";
+
+  return `
+    <div class="wallet-grid sim-tiles">
+      ${tile("Keep first 7", r.keep7_rate, false)}
+      ${tile("Mana screw by T3", r.screw_rate, true)}
+      ${tile("Flooded at T6", r.flood_rate, true)}
+      ${tile("Curved out T1–4", r.curve_out_rate, null)}
+    </div>
+    <div class="charts">
+      <div class="chart-block">
+        <h4>Mulligans</h4>
+        ${mullRows}
+      </div>
+      <div class="chart-block">
+        <h4>Land drops on curve</h4>
+        <div class="curve" style="grid-template-columns:repeat(${r.land_drops_on_curve.length}, 1fr)">${dropBars}</div>
+      </div>
+      ${colorRows ? `<div class="chart-block">
+        <h4>Color on time</h4>
+        ${colorRows}
+      </div>` : ""}
+    </div>
+    <div class="chart-block sim-cast">
+      <h4>Castability <small>(P first castable, ${r.params.on_play ? "on the play" : "on the draw"})</small></h4>
+      <div class="sim-table-wrap"><table class="sim-table">
+        <thead><tr><th>Card</th><th>Cost</th><th>On curve</th><th>+1 turn</th><th>+2 turns</th></tr></thead>
+        <tbody>${castRows}</tbody>
+      </table></div>
+    </div>
+    ${warnings}
+    <details class="import-panel sim-assumptions">
+      <summary>Simulation assumptions</summary>
+      <ul>${r.assumptions.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>
+    </details>`;
 }
 
 // ---- Matches tab ----

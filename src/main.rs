@@ -11,6 +11,7 @@ mod db;
 mod localization;
 mod log_watcher;
 mod parser;
+mod sim;
 mod state;
 mod web;
 

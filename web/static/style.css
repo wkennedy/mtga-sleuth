@@ -1000,3 +1000,67 @@ input[type="checkbox"] { accent-color: var(--accent); }
   .analyze-actions { flex-wrap: wrap; }
   .analyze-actions input[type="text"] { flex-basis: 100%; }
 }
+
+/* ---- Draw simulator panel ---- */
+#sim-panel:not(:empty) { margin: 12px 0; }
+.sim-params {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.sim-params select {
+  background-color: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+.sim-tiles { margin-bottom: 12px; }
+.sim-tiles .value.good { color: var(--good); }
+.sim-tiles .value.bad { color: var(--bad); }
+.sim-row {
+  display: grid;
+  grid-template-columns: 88px 1fr 52px;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0;
+}
+.sim-row-label {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.sim-row-val {
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sim-cast { margin-top: 12px; }
+.sim-table-wrap { overflow-x: auto; }
+.sim-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.sim-table th,
+.sim-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.sim-table th { color: var(--muted); font-weight: 500; font-size: 12px; }
+.sim-table td:nth-child(n + 3),
+.sim-table th:nth-child(n + 3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sim-warnings { margin-top: 8px; font-size: 12px; }
+.sim-assumptions { margin-top: 12px; }
+.sim-assumptions ul { margin: 8px 0 4px 18px; font-size: 12px; color: var(--muted); }

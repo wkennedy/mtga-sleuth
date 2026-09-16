@@ -99,6 +99,20 @@ fn main() {
             "scryfall_uri": c.get("scryfall_uri"),
             "legalities": legalities,
             "oracle_text": c.get("oracle_text"),
+            "produced_mana": c.get("produced_mana"),
+            // Project faces down to the fields Card::card_faces keeps so the
+            // bundle stays small. Must mirror `CardFace` in src/cards/mod.rs.
+            "card_faces": c.get("card_faces").and_then(|f| f.as_array()).map(|faces| {
+                faces
+                    .iter()
+                    .map(|f| serde_json::json!({
+                        "mana_cost": f.get("mana_cost"),
+                        "type_line": f.get("type_line"),
+                        "produced_mana": f.get("produced_mana"),
+                        "oracle_text": f.get("oracle_text"),
+                    }))
+                    .collect::<Vec<_>>()
+            }),
         }));
     }
     eprintln!("build.rs: filtered {total} cards to {} arena entries…", filtered.len());

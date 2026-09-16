@@ -13,6 +13,7 @@ use crate::state::AppState;
 pub mod api;
 mod cdn;
 pub mod import;
+pub mod simulate;
 mod sse;
 pub mod wildcards;
 
@@ -31,6 +32,7 @@ pub async fn serve(bind: String, state: Arc<AppState>) -> Result<()> {
             get(api::get_deck).put(api::update_deck).delete(api::delete_deck),
         )
         .route("/api/decks/{id}/export", get(api::export_deck))
+        .route("/api/decks/{id}/simulate", post(simulate::simulate_deck))
         .route("/api/cards", get(api::search_cards))
         .route("/api/matches", get(api::list_matches))
         .route("/api/matches/{id}", get(api::get_match))
